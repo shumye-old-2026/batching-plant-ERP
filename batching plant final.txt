@@ -1,0 +1,1716 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BATCHING PLANT - ENTERPRISE ERP SYSTEM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #05070f; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #05070f; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #334155; }
+        .glass-card { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); transition: all 0.3s ease; }
+        .reorder-needed { border: 2px solid #ef4444 !important; background-color: rgba(69, 10, 10, 0.7) !important; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        .hidden { display: none !important; }
+        
+        #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+        .toast-item { background: #0f172a; border-left: 4px solid #10b981; color: #fff; padding: 12px 20px; border-radius: 8px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); font-size: 13px; display: flex; align-items: center; gap: 10px; animation: slideIn 0.3s ease forwards; }
+        .toast-item.error { border-left-color: #ef4444; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        @media print {
+            body * { visibility: hidden; }
+            #printable-receipt, #printable-receipt *, #printable-mix-receipt, #printable-mix-receipt *, #printable-gatepass, #printable-gatepass *, #printable-report-modal, #printable-report-modal * { visibility: visible; }
+            #printable-receipt, #printable-mix-receipt, #printable-gatepass, #printable-report-modal { position: absolute; left: 0; top: 0; width: 100%; background: white !important; color: black !important; }
+        }
+    </style>
+</head>
+
+<body class="p-4 md:p-6" onload="initApp()">
+
+    <div id="toast-container"></div>
+
+    <!-- የአስተዳዳሪ ፒን ማረጋገጫ ሞዳል -->
+    <div id="admin-pin-modal" class="hidden fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
+        <div class="glass-card p-6 rounded-2xl max-w-sm w-full text-center space-y-4 border-amber-500/50 shadow-2xl">
+            <div class="bg-amber-950/50 p-3 rounded-full w-12 h-12 mx-auto flex items-center justify-center text-amber-400 border border-amber-800">
+                <i class="fa-solid fa-lock text-xl"></i>
+            </div>
+            <h3 class="text-sm font-bold text-amber-400 uppercase">የአስተዳዳሪ ፒን ቁጥር ያስፈልጋል</h3>
+            <p class="text-xs text-slate-300">ይህንን ስራ ለመስራት የ 4 አሃዝ አስተዳዳሪ ፒን (Admin PIN) ያስገቡ.</p>
+            <input type="password" id="adminPinInput" placeholder="****" maxlength="4" class="w-full bg-slate-950 border border-slate-700 text-center text-xl tracking-widest text-amber-400 font-bold p-3 rounded-xl outline-none">
+            <div class="flex gap-2 pt-2">
+                <button onclick="closeAdminPinModal()" class="w-1/2 bg-slate-800 text-slate-300 py-2.5 rounded-xl text-xs font-bold">ተው (Cancel)</button>
+                <button onclick="verifyAdminPin()" class="w-1/2 bg-amber-600 hover:bg-amber-500 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg">አረጋግጥ (Verify)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- የጌት ፓስ / የጭነት ወረቀት (Gate Pass Receipt Modal) -->
+    <div id="gatepass-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-white text-slate-900 p-8 rounded-2xl max-w-lg w-full shadow-2xl relative space-y-6" id="printable-gatepass">
+            <div class="text-center border-b border-slate-300 pb-4">
+                <h2 class="text-xl font-black uppercase tracking-wider text-purple-900">BATCHING PLANT - OFFICIAL GATE PASS</h2>
+                <p class="text-xs text-slate-600 font-semibold uppercase">የኮንክሪት ጭነት እና መውጫ የጌት ፓስ ሰነድ (Waybill & Dispatch Pass)[cite: 1, 2]</p>
+            </div>
+            <div class="grid grid-cols-2 gap-4 text-xs">
+                <div><p class="text-slate-500 font-bold">የጭነት መለያ ID:</p><p id="gp-id" class="font-mono font-bold text-slate-800">-</p></div>
+                <div><p class="text-slate-500 font-bold">ቀንና ሰዓት:</p><p id="gp-date" class="font-mono text-slate-800">-</p></div>
+                <div><p class="text-slate-500 font-bold">የሽያጭ ማዘዣ (SO):</p><p id="gp-so" class="font-mono font-bold text-slate-800">-</p></div>
+                <div><p class="text-slate-500 font-bold">ደንበኛ / ሳይት:</p><p id="gp-customer" class="font-bold text-slate-800">-</p></div>
+            </div>
+            <div class="bg-slate-100 p-4 rounded-xl border border-slate-300 space-y-2 text-xs">
+                <div class="flex justify-between"><span class="text-slate-600 font-bold">የኮንክሪት ግሬድ:</span><span id="gp-grade" class="font-bold text-purple-900">-</span></div>
+                <div class="flex justify-between"><span class="text-slate-600 font-bold">የተጫነው መጠን:</span><span id="gp-volume" class="font-mono font-bold text-emerald-700">- m³</span></div>
+                <div class="flex justify-between"><span class="text-slate-600 font-bold">የሹፌር ስም:</span><span id="gp-driver" class="font-bold text-slate-800">-</span></div>
+                <div class="flex justify-between"><span class="text-slate-600 font-bold">የመኪና ታርጋ ቁጥር:</span><span id="gp-plate" class="font-mono font-bold text-slate-800">-</span></div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-[10px] pt-3 border-t border-slate-300 text-center">
+                <div class="p-2 bg-slate-50 rounded border border-slate-200"><p class="text-slate-500 font-bold">አስረካቢ:</p><p class="font-bold text-slate-800 mt-1">Operator</p></div>
+                <div class="p-2 bg-slate-50 rounded border border-slate-200"><p class="text-slate-500 font-bold">ጥራት አረጋጋጭ:</p><p class="font-bold text-slate-800 mt-1">QC Lab</p></div>
+                <div class="p-2 bg-slate-50 rounded border border-slate-200"><p class="text-slate-500 font-bold">ሴኪዩሪቲ/ጌት:</p><p class="font-bold text-slate-800 mt-1">Checked & Out</p></div>
+            </div>
+            <div class="flex justify-end gap-3 pt-4">
+                <button onclick="closeGatePassModal()" class="bg-slate-300 text-slate-800 px-4 py-2 rounded-xl text-xs font-bold">ዝጋ</button>
+                <button onclick="window.print()" class="bg-purple-600 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-lg"><i class="fa-solid fa-print"></i> ጌት ፓስ ፕሪንት አድርግ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ፋይናንስ ደረሰኝ ፕሪንት ሞዳል -->
+    <div id="receipt-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-white text-slate-900 p-8 rounded-2xl max-w-lg w-full shadow-2xl relative space-y-6" id="printable-receipt">
+            <div class="text-center border-b border-slate-300 pb-4">
+                <h2 class="text-xl font-black uppercase tracking-wider text-blue-900">BATCHING PLANT ENTERPRISE</h2>
+                <p class="text-xs text-slate-600 font-semibold uppercase">ኦፊሴላዊ የገንዘብ መቀበያ ደረሰኝ (Official Cash Receipt & Tax Invoice)[cite: 1, 2]</p>
+                <p class="text-[10px] text-slate-500 font-mono mt-1">TIN: 0049281920 | VAT Reg No: 84920192</p>
+            </div>
+            <div class="grid grid-cols-2 gap-4 text-xs">
+                <div><p class="text-slate-500 font-bold">ደረሰኝ ቁጥር:</p><p id="receipt-inv-id" class="font-mono font-bold text-slate-800">-</p></div>
+                <div><p class="text-slate-500 font-bold">ቀንና ሰዓት:</p><p id="receipt-date" class="font-mono text-slate-800">-</p></div>
+                <div><p class="text-slate-500 font-bold">የሽያጭ ማዘዣ:</p><p id="receipt-so-id" class="font-mono font-bold text-slate-800">-</p></div>
+                <div><p class="text-slate-500 font-bold">የደንበኛ ስም:</p><p id="receipt-customer" class="font-bold text-slate-800">-</p></div>
+            </div>
+            <div class="bg-slate-100 p-4 rounded-xl border border-slate-300 space-y-2 text-xs">
+                <div class="flex justify-between"><span class="text-slate-600 font-bold">የክፍያ መንገድ / ባንክ:</span><span id="receipt-mode" class="font-bold text-blue-900">-</span></div>
+                <div class="flex justify-between"><span class="text-slate-600 font-bold">የባንክ ሪፈረንስ ቁጥር:</span><span id="receipt-ref" class="font-mono font-bold text-slate-800">-</span></div>
+                <div class="flex justify-between border-t border-slate-300 pt-2 text-sm font-black"><span>ጠቅላላ መጠን:</span><span id="receipt-amount" class="text-emerald-700 font-mono">- ETB</span></div>
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-slate-200">
+                <div class="text-[9px] text-slate-500 font-mono"><p>Digital Tax Verified & Encrypted</p><p>Auth Code: BPC-TX-2026-9812</p></div>
+                <div class="bg-slate-900 p-2 rounded text-white text-[10px] font-mono flex items-center gap-2"><i class="fa-solid fa-qrcode text-xl text-teal-400"></i><span>SCAN TO VERIFY</span></div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-[10px] pt-3 border-t border-slate-300 text-center">
+                <div class="p-2 bg-slate-50 rounded border border-slate-200"><p class="text-slate-500 font-bold">ካሼር:</p><p id="receipt-cashier" class="font-bold text-slate-800 mt-1">-</p></div>
+                <div class="p-2 bg-slate-50 rounded border border-slate-200"><p class="text-slate-500 font-bold">አረጋጋጭ:</p><p id="receipt-verifier" class="font-bold text-slate-800 mt-1">-</p></div>
+                <div class="p-2 bg-slate-50 rounded border border-slate-200"><p class="text-slate-500 font-bold">ማኔጀር:</p><p id="receipt-manager" class="font-bold text-slate-800 mt-1">-</p></div>
+            </div>
+            <div class="flex justify-end gap-3 pt-4">
+                <button onclick="closeReceiptModal()" class="bg-slate-300 text-slate-800 px-4 py-2 rounded-xl text-xs font-bold">ዝጋ</button>
+                <button onclick="window.print()" class="bg-blue-600 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-lg"><i class="fa-solid fa-print"></i> ፕሪንት አድርግ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- የላብራቶሪ ሚክስ ዲዛይን ፕሪንት ሞዳል -->
+    <div id="mix-receipt-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-white text-slate-900 p-8 rounded-2xl max-w-lg w-full shadow-2xl relative space-y-6" id="printable-mix-receipt">
+            <div class="text-center border-b border-slate-300 pb-4">
+                <h2 class="text-xl font-black uppercase tracking-wider text-teal-900">BATCHING PLANT - LAB QC</h2>
+                <p class="text-xs text-slate-600 font-semibold uppercase">ኦፊሴላዊ የኮንክሪት ቀመር ማረጋገጫ (Official Mix Design Sheet)[cite: 1, 2]</p>
+            </div>
+            <div class="grid grid-cols-2 gap-4 text-xs">
+                <div><p class="text-slate-500 font-bold">የደንበኛ/ሳይት ስም:</p><p id="mix-receipt-client" class="font-bold text-slate-800">-</p></div>
+                <div><p class="text-slate-500 font-bold">የኮንክሪት ግሬድ:</p><p id="mix-receipt-grade" class="font-mono font-bold text-teal-800 text-sm">-</p></div>
+                <div><p class="text-slate-500 font-bold">ሲሚንቶ ዓይነት:</p><p id="mix-receipt-cement" class="font-bold text-slate-800">-</p></div>
+                <div><p class="text-slate-500 font-bold">አሸዋ ዓይነት:</p><p id="mix-receipt-sand" class="font-bold text-slate-800">-</p></div>
+            </div>
+            <div class="bg-slate-100 p-4 rounded-xl border border-slate-300 space-y-2 text-xs">
+                <div class="flex justify-between font-bold text-slate-700"><span>የቁሳቁስ ስርጭት (per 1 m³):</span><span>መጠን (Kg / L)</span></div>
+                <div class="flex justify-between border-t border-slate-200 pt-1"><span>ሲሚንቶ (Cement):</span><span id="mix-res-opc" class="font-mono font-bold text-blue-900">- Kg</span></div>
+                <div class="flex justify-between"><span>አሸዋ (Sand):</span><span id="mix-res-sand" class="font-mono font-bold text-blue-900">- Kg</span></div>
+                <div class="flex justify-between"><span>ጠጠር (Aggregates 00, 01, 02):</span><span id="mix-res-aggs" class="font-mono font-bold text-blue-900">-</span></div>
+                <div class="flex justify-between"><span>ኬሚካል (Admixture):</span><span id="mix-res-chem" class="font-mono font-bold text-emerald-700">-</span></div>
+                <div class="flex justify-between border-t border-slate-300 pt-2 font-black text-sm"><span>ውሃ መጠን (Water):</span><span id="mix-res-water" class="font-mono text-teal-800">- L</span></div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 text-[10px] pt-2 border-t border-slate-300 text-center">
+                <div class="p-2 bg-slate-50 rounded border border-slate-200"><p class="text-slate-500 font-bold">የላብራቶሪ ቴክኒሻን:</p><p class="font-bold text-slate-800 mt-1">QC Lab Engineer</p></div>
+                <div class="p-2 bg-slate-50 rounded border border-slate-200"><p class="text-slate-500 font-bold">የፕላንት ማኔጀር ማረጋገጫ:</p><p class="font-bold text-slate-800 mt-1">Approved & Certified</p></div>
+            </div>
+            <div class="flex justify-end gap-3 pt-4">
+                <button onclick="closeMixReceiptModal()" class="bg-slate-300 text-slate-800 px-4 py-2 rounded-xl text-xs font-bold">ዝጋ</button>
+                <button onclick="window.print()" class="bg-teal-600 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-lg"><i class="fa-solid fa-print"></i> ፕሪንት አድርግ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ሪፖርት ፕሪቪው ሞዳል -->
+    <div id="report-preview-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-white text-slate-900 p-8 rounded-2xl max-w-3xl w-full shadow-2xl relative space-y-6 max-h-[90vh] overflow-y-auto" id="printable-report-modal">
+            <div class="text-center border-b border-slate-300 pb-4">
+                <h2 class="text-xl font-black uppercase tracking-wider text-blue-900">BATCHING PLANT - ENTERPRISE REPORT</h2>
+                <p id="report-modal-subtitle" class="text-xs text-slate-600 font-semibold uppercase">አጠቃላይ የስርዓቱ የምርትና የፋይናንስ ሪፖርት[cite: 1, 2]</p>
+            </div>
+            <div id="report-modal-content" class="space-y-4 text-xs"></div>
+            <div class="flex justify-end gap-3 pt-4 border-t border-slate-300">
+                <button onclick="closeReportPreviewModal()" class="bg-slate-300 text-slate-800 px-4 py-2 rounded-xl text-xs font-bold">ዝጋ</button>
+                <button onclick="downloadExcelCSVReal()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold"><i class="fa-solid fa-file-excel"></i> Excel (.csv) አውርድ</button>
+                <button onclick="window.print()" class="bg-blue-600 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-lg"><i class="fa-solid fa-print"></i> ፕሪንት / ፒዲኤፍ አድርግ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Code Waybill ቅኝት ማስመሰያ ሞዳል -->
+    <div id="qr-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="glass-card p-6 rounded-2xl max-w-sm w-full text-center space-y-4 border-teal-500/50">
+            <h3 class="text-sm font-bold text-teal-400 uppercase">QR Code Waybill Scanner</h3>
+            <div class="bg-slate-950 p-6 rounded-xl border border-dashed border-teal-500/50 flex flex-col items-center justify-center space-y-3">
+                <i class="fa-solid fa-qrcode text-5xl text-teal-400 animate-pulse"></i>
+                <p id="qr-modal-text" class="text-xs font-mono text-slate-300">QR Code scanning...</p>
+            </div>
+            <button onclick="closeQrModal()" class="w-full bg-teal-600 text-white py-2 rounded-xl text-xs font-bold">ስካን አጠናቅ</button>
+        </div>
+    </div>
+
+    <!-- የማሳወቂያ ሞዳል -->
+    <div id="msg-notification-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="glass-card p-6 rounded-2xl max-w-md w-full space-y-4 border-emerald-500 shadow-2xl">
+            <div class="flex items-center gap-3 text-emerald-400">
+                <i id="msg-modal-icon" class="fa-solid fa-comment-sms text-3xl animate-bounce"></i>
+                <h3 id="msg-modal-title" class="text-sm font-bold uppercase">ማሳወቂያ ተልኳል (SMS & Telegram)</h3>
+            </div>
+            <p class="text-xs text-slate-300">መልእክቱ በተሳካ ሁኔታ ተሰራጭቷል፦</p>
+            <div class="bg-slate-950 p-3 rounded-xl border border-emerald-500/40 text-xs font-mono text-emerald-300" id="msg-modal-target">-</div>
+            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 text-xs text-slate-100 font-mono" id="msg-modal-body">-</div>
+            <button onclick="closeMsgModal()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg">እሺ (Close)</button>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto space-y-6">
+
+        <!-- ራስጌ ከ Multi-Plant Console እና AI Weather Bar ጋር -->
+        <header class="flex flex-col lg:flex-row justify-between items-start lg:items-center glass-card p-6 rounded-2xl gap-4 shadow-xl">
+            <div class="flex items-center gap-4">
+                <div class="bg-gradient-to-br from-blue-600 to-teal-500 p-3.5 rounded-xl shadow-lg shadow-blue-500/10">
+                    <i class="fa-solid fa-industry text-2xl text-white"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-3">
+                        <h1 class="text-xl md:text-2xl font-black tracking-tight text-white">BATCHING PLANT MULTI-CONSOLE ERP</h1>
+                        <span id="plc-status-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 animate-pulse">● LIVE MULTI-PLANT LINKED</span>
+                    </div>
+                    <p class="text-xs text-teal-400 font-semibold tracking-wide uppercase mt-0.5">AI WEATHER & CURING READY - DEMO SYSTEM</p>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                <div class="bg-slate-950/80 border border-teal-500/40 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow">
+                    <span class="text-[10px] text-teal-400 font-bold uppercase"><i class="fa-solid fa-network-wired"></i> ንቁ ፕላንት:</span>
+                    <select id="activePlantSelect" onchange="switchPlantLocation()" class="bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-lg px-2 py-1 outline-none">
+                        <option value="Bole Plant">ቦሌ ፕላንት (Bole HQ)</option>
+                        <option value="Saris Plant">ሳሪስ ፕላንት (Saris Site)</option>
+                        <option value="Gerji Plant">ገጂ ፕላንት (Gerji Site)</option>
+                    </select>
+                </div>
+
+                <div class="bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl flex items-center gap-2">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase"><i class="fa-solid fa-user-shield text-blue-400"></i> ሚና:</span>
+                    <select id="userRoleSelect" onchange="applyUserRole()" class="bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-lg px-2 py-1 outline-none">
+                        <option value="ALL">አጠቃላይ አስተዳደር (Full Access)</option>
+                        <option value="STORE">ስቶር ኪፐር (Storekeeper)</option>
+                        <option value="MARKETING">ማርኬቲንግና ሽያጭ (Marketing)</option>
+                        <option value="PRODUCTION">ኦፕሬተር / ፕሮዳክሽን (Production)</option>
+                        <option value="LAB">ላብራቶሪ / QC (Lab Tech)</option>
+                        <option value="FINANCE">ፋይናንስና ካሼር (Finance)</option>
+                        <option value="HR">HR & Driver Admin</option>
+                    </select>
+                </div>
+
+                <div class="bg-slate-950/60 border border-slate-800 px-4 py-2 rounded-xl text-center">
+                    <p class="text-[10px] text-slate-500 font-bold uppercase">የዛሬ ጠቅላላ ገቢ</p>
+                    <p class="text-sm font-mono font-black text-emerald-400" id="stat-total-revenue">0.00 ETB</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- የስቶክ ማሳወቂያ፣ የጥራት ፈጣን ስታቲስቲክስ እና AI Weather & Curing Panel -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div id="stock-alert-banner" class="hidden md:col-span-1 bg-red-950/80 border border-red-600 p-4 rounded-xl flex items-center justify-between gap-4 animate-pulse">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-triangle-exclamation text-2xl text-red-500"></i>
+                    <div>
+                        <h4 class="text-xs font-bold text-red-200 uppercase">አስቸኳይ የስቶክ ማስጠንቀቂያ</h4>
+                        <p id="stock-alert-text" class="text-xs text-red-300 mt-0.5">-</p>
+                    </div>
+                </div>
+                <button onclick="triggerAutoSupplierPO()" class="bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-2 rounded-lg text-xs shadow"><i class="fa-solid fa-paper-plane"></i> ፖ ላክ</button>
+            </div>
+            
+            <div class="glass-card p-4 rounded-xl border-emerald-500/40 flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="bg-emerald-950 p-3 rounded-xl border border-emerald-800 text-emerald-400"><i class="fa-solid fa-shield-check text-xl"></i></div>
+                    <div>
+                        <h4 class="text-xs font-bold text-emerald-300 uppercase">QC Compliance</h4>
+                        <p class="text-xs text-slate-300 mt-0.5">28 Days Cube: <strong class="text-emerald-400">PASSED (32.4 MPa)</strong></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card p-4 rounded-xl border-sky-500/40 flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="bg-sky-950 p-3 rounded-xl border border-sky-800 text-sky-400"><i class="fa-solid fa-cloud-sun text-xl"></i></div>
+                    <div>
+                        <h4 class="text-xs font-bold text-sky-300 uppercase">AI Weather & Curing</h4>
+                        <p id="weather-status-text" class="text-xs text-slate-300 mt-0.5">Temp: 24°C | Normal Curing Active</p>
+                    </div>
+                </div>
+                <button onclick="triggerCuringReminders()" class="bg-sky-600 hover:bg-sky-500 text-white font-bold px-3 py-2 rounded-lg text-xs shadow"><i class="fa-solid fa-bell"></i> የውሃ ማጠጫ SMS ላክ</button>
+            </div>
+        </div>
+
+        <!-- የተጣራ ትርፍ ማጠቃለያ ፓነል -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="glass-card p-4 rounded-2xl border-emerald-500/30 flex items-center justify-between">
+                <div><p class="text-[10px] text-slate-400 font-bold uppercase">ጠቅላላ የሽያጭ ገቢ (Revenue)</p><p id="net-rev-display" class="text-lg font-mono font-black text-emerald-400 mt-1">0.00 ETB</p></div>
+                <div class="bg-emerald-950 p-3 rounded-xl text-emerald-400"><i class="fa-solid fa-arrow-trend-up text-xl"></i></div>
+            </div>
+            <div class="glass-card p-4 rounded-2xl border-red-500/30 flex items-center justify-between">
+                <div><p class="text-[10px] text-slate-400 font-bold uppercase">አጠቃላይ ወጪዎች (Total Expenses)</p><p id="net-exp-display" class="text-lg font-mono font-black text-red-400 mt-1">0.00 ETB</p></div>
+                <div class="bg-red-950 p-3 rounded-xl text-red-400"><i class="fa-solid fa-arrow-trend-down text-xl"></i></div>
+            </div>
+            <div class="glass-card p-4 rounded-2xl border-blue-500/30 flex items-center justify-between">
+                <div><p class="text-[10px] text-slate-400 font-bold uppercase">የተጣራ ትርፍ (Net Profit)</p><p id="net-profit-display" class="text-lg font-mono font-black text-blue-400 mt-1">0.00 ETB</p></div>
+                <div class="bg-blue-950 p-3 rounded-xl text-blue-400"><i class="fa-solid fa-wallet text-xl"></i></div>
+            </div>
+        </div>
+
+        <!-- ሪፖርት፣ አውቶማቲክ ዳታ ባክአፕ እና ኤክስፖርት ፓነል -->
+        <div id="reporting-panel" class="glass-card p-4 rounded-xl flex flex-wrap justify-between items-center gap-4">
+            <h3 class="text-sm font-bold uppercase text-slate-300">የስርዓት ማጠቃለያ፣ ባክአፕ እና ኤክስፖርት[cite: 1, 2]</h3>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="downloadJsonBackup()" class="bg-teal-600 hover:bg-teal-500 px-3 py-2 rounded-lg text-xs font-bold text-white shadow"><i class="fa-solid fa-cloud-arrow-down"></i> አውቶማቲክ Backup (JSON)</button>
+                <button onclick="generateSystemReport()" class="bg-blue-600 px-4 py-2 rounded-lg text-xs font-bold text-white"><i class="fa-solid fa-file-lines"></i> ሪፖርት አሳይ</button>
+                <button onclick="downloadExcelCSV()" class="bg-emerald-600 px-4 py-2 rounded-lg text-xs font-bold text-white"><i class="fa-solid fa-file-excel"></i> Excel (.csv)</button>
+                <button onclick="downloadPDF()" class="bg-purple-600 px-4 py-2 rounded-lg text-xs font-bold text-white"><i class="fa-solid fa-file-pdf"></i> PDF ሪፖርት</button>
+                <button onclick="requestAdminAction('RESET')" class="bg-red-800 hover:bg-red-700 px-3 py-2 rounded-lg text-xs font-bold text-white"><i class="fa-solid fa-rotate-left"></i> መረጃ አፅዳ</button>
+            </div>
+        </div>
+
+        <input type="text" id="searchBar" onkeyup="filterStocks()" placeholder="ዕቃ ይፈልጉ..." class="w-full glass-card border border-slate-700 p-3 rounded-xl text-white mb-4 mt-2">
+
+        <!-- ታብ መቆጣጠሪያዎች -->
+        <nav class="flex flex-wrap gap-2 border-b border-slate-800 pb-1">
+            <button onclick="switchTab('tab-dashboard')" id="btn-tab-dashboard" class="tab-btn px-4 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 glass-card text-slate-400 hover:text-white">
+                <i class="fa-solid fa-chart-pie"></i> ዳሽቦርድና ስቶክ
+            </button>
+            <button onclick="switchTab('tab-marketing')" id="btn-tab-marketing" class="tab-btn px-4 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 glass-card text-slate-400 hover:text-white">
+                <i class="fa-solid fa-bullhorn text-amber-500"></i> ማርኬቲንግና ማሳወቂያ
+            </button>
+            <button onclick="switchTab('tab-production')" id="btn-tab-production" class="tab-btn px-4 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 glass-card text-slate-400 hover:text-white">
+                <i class="fa-solid fa-gears text-purple-500"></i> ፕሮዳክሽን፣ GPS & Fleet
+            </button>
+            <button onclick="switchTab('tab-lab')" id="btn-tab-lab" class="tab-btn px-4 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 glass-card text-slate-400 hover:text-white">
+                <i class="fa-solid fa-flask text-teal-400"></i> ላብራቶሪና QC (Cube Test)
+            </button>
+            <button onclick="switchTab('tab-finance')" id="btn-tab-finance" class="tab-btn px-4 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 glass-card text-slate-400 hover:text-white">
+                <i class="fa-solid fa-wallet text-emerald-400"></i> ፋይናንስና ዱቤ Aging
+            </button>
+            <button onclick="switchTab('tab-hr')" id="btn-tab-hr" class="tab-btn px-4 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 glass-card text-slate-400 hover:text-white">
+                <i class="fa-solid fa-users text-pink-400"></i> HR & Driver Commission
+            </button>
+        </nav>
+
+        <!-- 1. ዳሽቦርድና ስቶክ ታብ -->
+        <div id="tab-dashboard" class="tab-content active space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-800 pb-2 gap-2">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-warehouse text-amber-500"></i> አጠቃላይ የዕቃዎች ክምችት መከታተያ ስቶክ ካርዶች
+                </h3>
+                <span class="text-[10px] text-amber-400 bg-amber-950/40 px-3 py-1 rounded-full border border-amber-800/60 font-bold">
+                    ሲሚንቶ በኩንታል (qt) | አሸዋና አግሪጌት በ m³ | ኬሚካልና ነዳጅ በ ሊትር (L)
+                </span>
+            </div>
+
+            <!-- የቁሳቁስ ካርዶች -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="OPC Lemi"><div class="absolute top-0 left-0 w-1 h-full bg-amber-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">OPC Lemi</p><div class="mt-2"><span id="display-OPC-Lemi" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">qt</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="OPC Dangote"><div class="absolute top-0 left-0 w-1 h-full bg-amber-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">OPC Dangote</p><div class="mt-2"><span id="display-OPC-Dangote" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">qt</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="OPC Ethio"><div class="absolute top-0 left-0 w-1 h-full bg-amber-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">OPC Ethio</p><div class="mt-2"><span id="display-OPC-Ethio" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">qt</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="PPC Dangote"><div class="absolute top-0 left-0 w-1 h-full bg-orange-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">PPC Dangote</p><div class="mt-2"><span id="display-PPC-Dangote" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">qt</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="PPC Lemi"><div class="absolute top-0 left-0 w-1 h-full bg-orange-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">PPC Lemi</p><div class="mt-2"><span id="display-PPC-Lemi" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">qt</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="PPC Ethio"><div class="absolute top-0 left-0 w-1 h-full bg-orange-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">PPC Ethio</p><div class="mt-2"><span id="display-PPC-Ethio" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">qt</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="Silica Sand"><div class="absolute top-0 left-0 w-1 h-full bg-yellow-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">Silica Sand</p><div class="mt-2"><span id="display-Silica-Sand" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">m³</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="Crushed Sand"><div class="absolute top-0 left-0 w-1 h-full bg-yellow-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">Crushed Sand</p><div class="mt-2"><span id="display-Crushed-Sand" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">m³</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="Natural Sand"><div class="absolute top-0 left-0 w-1 h-full bg-yellow-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">Natural Sand</p><div class="mt-2"><span id="display-Natural-Sand" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">m³</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="Aggregate 00"><div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">Aggregate 00</p><div class="mt-2"><span id="display-Agg-00" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">m³</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="Aggregate 01"><div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">Aggregate 01</p><div class="mt-2"><span id="display-Agg-01" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">m³</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="Aggregate 02"><div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">Aggregate 02</p><div class="mt-2"><span id="display-Agg-02" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">m³</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="Admixture GP80"><div class="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">Admixture GP80</p><div class="mt-2"><span id="display-Admixture-GP80" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">L</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="Admixture GT30"><div class="absolute top-0 left-0 w-1 h-full bg-teal-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">Admixture GT30</p><div class="mt-2"><span id="display-Admixture-GT30" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">L</span></div></div>
+                <div class="glass-card p-4 rounded-2xl relative overflow-hidden stock-card" data-item="Diesel Fuel"><div class="absolute top-0 left-0 w-1 h-full bg-red-500"></div><p class="text-[9px] uppercase font-bold text-slate-400">Diesel Fuel</p><div class="mt-2"><span id="display-Diesel-Fuel" class="text-lg font-black font-mono text-red-400">0</span><span class="text-[10px] text-slate-500 ml-1">L</span></div></div>
+            </div>
+
+            <!-- የምርት አፈጻጸም ግራፍ -->
+            <div class="glass-card p-4 mt-6 rounded-xl border border-blue-500/30">
+                <h3 class="text-sm font-bold uppercase text-blue-400 mb-4">የምርት አፈጻጸም ግራፍ[cite: 1, 2]</h3>
+                <canvas id="productionChart" height="100"></canvas>
+            </div>
+
+            <!-- የጥሬ ዕቃ ገቢ ፎርም -->
+            <div class="glass-card p-5 rounded-2xl space-y-4">
+                <h4 class="text-xs font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-cart-plus text-emerald-500"></i> አዲስ የጥሬ ዕቃ ገቢ እና ዋጋ መመዝገቢያ (Material Intake Card Form)[cite: 1, 2]
+                </h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                    <div>
+                        <label class="block text-[10px] text-slate-400 font-bold mb-1">የዕቃው ዓይነት</label>
+                        <select id="intakeItemSelect" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white">
+                            <option value="OPC-Lemi">OPC Lemi (qt)</option><option value="OPC-Dangote">OPC Dangote (qt)</option><option value="OPC-Ethio">OPC Ethio (qt)</option>
+                            <option value="PPC-Dangote">PPC Dangote (qt)</option><option value="PPC-Lemi">PPC Lemi (qt)</option><option value="PPC-Ethio">PPC Ethio (qt)</option>
+                            <option value="Silica-Sand">Silica Sand (m³)</option><option value="Crushed-Sand">Crushed Sand (m³)</option><option value="Natural-Sand">Natural Sand (m³)</option>
+                            <option value="Agg-00">Aggregate 00 (m³)</option><option value="Agg-01">Aggregate 01 (m³)</option><option value="Agg-02">Aggregate 02 (m³)</option>
+                            <option value="Admixture-GP80">Admixture GP80 (L)</option><option value="Admixture-GT30">Admixture GT30 (L)</option><option value="Diesel-Fuel">Diesel Fuel (L)</option>
+                        </select>
+                    </div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የገቢ መጠን</label><input type="number" id="intakeAmount" placeholder="መጠን" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div><label class="block text-[10px] text-amber-400 font-bold mb-1">የአንድ unit ዋጋ (ETB)</label><input type="number" id="intakeUnitPrice" placeholder="Unit Price" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-amber-400 font-mono font-bold"></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የአቅራቢ ድርጅት ስም</label><input type="text" id="intakeSupplier" placeholder="የአቅራቢ ስም" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs pt-2 border-t border-slate-800/50">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የመኪና ታርጋና አሽከርካሪ</label><input type="text" id="intakeDriver" placeholder="ታርጋ ቁጥር / አሽከርካሪ" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-[10px] text-teal-400 font-bold mb-1">የተረካቢ ባለሙያ ስም</label><input type="text" id="intakeReceiver" placeholder="ስቶር ኪፐር" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-[10px] text-yellow-400 font-bold mb-1">የጥራትና መጠን ማረጋገጫ</label><input type="text" id="intakeCheckedBy" placeholder="ላብራቶሪ" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-[10px] text-orange-400 font-bold mb-1">ያጸደቀው ኃላፊ</label><input type="text" id="intakeApprovedBy" placeholder="ማናጀር" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                </div>
+
+                <div class="flex justify-end pt-2">
+                    <button onclick="processMaterialIntake()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition-all shadow-lg"><i class="fa-solid fa-plus-circle"></i> ገቢ አድርግ፣ ዋጋ መዝግብና አጽድቅ</button>
+                </div>
+            </div>
+
+            <!-- የጥሬ ዕቃ ገቢ ታሪክ -->
+            <div class="glass-card p-5 rounded-2xl space-y-4">
+                <h4 class="text-xs font-bold text-amber-500 uppercase tracking-wider"><i class="fa-solid fa-clock-rotate-left"></i> የጥሬ ዕቃ ገቢ እና ዋጋ ታሪክ</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 font-mono bg-slate-950/40">
+                                <th class="p-3">ቀንና ሰዓት</th><th class="p-3">ዕቃ</th><th class="p-3">መጠን</th><th class="p-3 text-amber-400">ጠቅላላ ዋጋ</th><th class="p-3">አቅራቢ</th><th class="p-3 text-teal-400">ተረካቢ</th><th class="p-3 text-yellow-400">ያረጋገጠው</th><th class="p-3 text-orange-400">ያጸደቀው</th>
+                            </tr>
+                        </thead>
+                        <tbody id="materialIntakeTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. ማርኬቲንግና ማሳወቂያ ታብ -->
+        <div id="tab-marketing" class="tab-content space-y-6">
+            <div class="glass-card p-5 rounded-2xl space-y-4 shadow-lg border-teal-900/50">
+                <h4 class="text-xs font-bold text-teal-400 uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-bell text-teal-400"></i> የማሳወቂያ መንገድ ምርጫ (SMS / Telegram / Both)</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                    <div>
+                        <label class="block text-[10px] text-slate-400 font-bold mb-1">ማሳወቂያ የሚላክበት መንገድ</label>
+                        <select id="notificationChannel" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold text-emerald-400">
+                            <option value="SMS">ትክክለኛ ኤስኤምኤስ (SMS Only)</option>
+                            <option value="TELEGRAM">ቴሌግራም ቦት (Telegram Only)</option>
+                            <option value="BOTH" selected>ሁለቱም (SMS + Telegram)</option>
+                        </select>
+                    </div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">SMS API Key</label><input type="text" id="smsApiKey" value="SMS_ETHIO_API_KEY_2026" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">Telegram Bot Token & Chat ID</label><input type="text" id="tgBotToken" value="7200000000:AAH...BatchBot" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                </div>
+            </div>
+
+            <div class="glass-card p-5 rounded-2xl space-y-4 shadow-lg border-teal-900/50">
+                <h4 class="text-xs font-bold text-teal-400 uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-user-plus text-teal-400"></i> አዲስ ደንበኛ መፍጠሪያ ፈጣን ፎርም</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የደንበኛ/ድርጅት ስም</label><input type="text" id="mktQuickClientName" placeholder="የኩባንያ ስም" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold"></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የተፈቀደ የብድር ጣሪያ (ETB)</label><input type="number" id="mktQuickCreditLimit" placeholder="ዱቤ ከሌለው 0" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono text-red-400"></div>
+                    <div class="flex items-end"><button onclick="executeQuickClientAdd()" class="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2.5 rounded-xl text-xs shadow-lg"><i class="fa-solid fa-check-double"></i> ደንበኛ ጨምር</button></div>
+                </div>
+            </div>
+
+            <!-- አቅራቢዎች መመዝገቢያ እና ፖ ማሳወቂያ ፎርም -->
+            <div class="glass-card p-5 rounded-2xl space-y-4 shadow-lg border-amber-900/50">
+                <h4 class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-truck-field text-amber-400"></i> የጥሬ ዕቃ አቅራቢዎች ስልክ / ቴሌግራም መመዝገቢያ</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የአቅራቢ ድርጅት / ስም</label><input type="text" id="supplierNameInput" placeholder="ለምሳሌ: ለሚ ሲሚንቶ ፋብሪካ" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የሚቀርበው ዕቃ</label><input type="text" id="supplierItemInput" placeholder="ለምሳሌ: OPC Lemi" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-[10px] text-teal-400 font-bold mb-1">የስልክ / ቴሌግራም ቁጥር</label><input type="text" id="supplierPhoneInput" placeholder="+2519..." class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                </div>
+                <div class="flex justify-end pt-2">
+                    <button onclick="saveSupplierProfile()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-5 rounded-xl text-xs shadow"><i class="fa-solid fa-plus"></i> አቅራቢ መዝግብ</button>
+                </div>
+                <div class="overflow-x-auto pt-2">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead><tr class="border-b border-slate-800 text-slate-400 font-mono bg-slate-950/40"><th class="p-2.5">አቅራቢ ስም</th><th class="p-2.5">ዕቃ</th><th class="p-2.5 text-teal-400">ስልክ/ቴሌግራም</th><th class="p-2.5 text-center">አስቸኳይ ፖ (PO) ላክ</th></tr></thead>
+                        <tbody id="suppliersTableBody"><tr><td colspan="4" class="p-3 text-center text-slate-500">ምንም አቅራቢ አልተመዘገበም</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- የሽያጭ ትዕዛዝ መመዝገቢያ -->
+            <div class="glass-card p-5 rounded-2xl space-y-4">
+                <h3 class="text-sm font-black text-amber-500 uppercase tracking-wide flex items-center gap-2 border-b border-slate-800 pb-3">
+                    <i class="fa-solid fa-file-invoice-dollar"></i> አዲስ የሽያጭ ትዕዛዝ እና አውቶማቲክ SMS / Telegram ማሳወቂያ
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 text-xs">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የደንበኛ ስም</label><select id="soCustomerSelect" class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-2 text-xs text-white"><option value="">-- ደንበኛ ይምረጡ --</option></select></div>
+                    <div>
+                        <label class="block text-[10px] text-amber-400 font-bold mb-1">የክፍያ ሁኔታ</label>
+                        <select id="soPaymentType" class="w-full bg-slate-900 border border-amber-800/80 rounded-xl p-2.5 text-amber-400 font-bold"><option value="CASH" selected>ቅድመ-ክፍያ / በካሽ</option><option value="CREDIT">በዱቤ</option></select>
+                    </div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የሳይት/ፕሮጀክት ስም</label><input type="text" id="soSiteName" placeholder="Site Location" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div>
+                        <label class="block text-[10px] text-slate-400 font-bold mb-1">የኮንክሪት ግሬድ</label>
+                        <select id="soConcreteGrade" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold">
+                            <option value="C-5">C-5</option><option value="C-10">C-10</option><option value="C-15">C-15</option><option value="C-20">C-20</option><option value="C-25">C-25</option><option value="C-30" selected>C-30</option><option value="C-35">C-35</option><option value="C-37">C-37</option><option value="C-40">C-40</option><option value="C-45">C-45</option><option value="C-50">C-50</option><option value="C-55">C-55</option><option value="C-60">C-60</option><option value="C-70">C-70</option><option value="C-80">C-80</option>
+                        </select>
+                    </div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">ጠቅላላ መጠን (m³)</label><input type="number" id="soTotalVolume" placeholder="Total Volume" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-2">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የአንድ m³ ዋጋ (ETB)</label><input type="number" id="soUnitPrice" placeholder="Price per m³" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-[10px] text-teal-400 font-bold mb-1">የደንበኛ ስልክ / ቴሌግራም</label><input type="text" id="soClientPhone" placeholder="+2519..." class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div><label class="block text-[10px] text-amber-400 font-bold mb-1">ትዕዛዙን ያጸደቀው ኃላፊ</label><input type="text" id="soApprovedBy" placeholder="ማናጀር ስም" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                </div>
+                <div class="flex justify-end pt-2">
+                    <button onclick="createNewSalesOrder()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-2.5 px-6 rounded-xl transition-all shadow-lg">
+                        <i class="fa-solid fa-paper-plane"></i> SO ፍጠር እና ማሳወቂያ ላክ
+                    </button>
+                </div>
+            </div>
+
+            <!-- የሽያጭ ትዕዛዞች ዝርዝር -->
+            <div class="glass-card p-5 rounded-2xl space-y-4">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">የተመዘገቡ የሽያጭ ትዕዛዞች ዝርዝር</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 font-mono bg-slate-950/40">
+                                <th class="p-3">SO ID</th><th class="p-3">ደንበኛ / ሳይት / ስልክ</th><th class="p-3">ዓይነት</th><th class="p-3">ግሬድና መጠን</th><th class="p-3">ቀሪ (m³)</th><th class="p-3">ጠቅላላ ዋጋ</th><th class="p-3 text-emerald-400">የተከፈለ</th><th class="p-3">ሁኔታ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="salesOrderTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. ፕሮዳክሽን፣ GPS & Fleet ታብ -->
+        <div id="tab-production" class="tab-content space-y-6">
+            <div class="glass-card p-5 rounded-2xl space-y-4 shadow-xl border-purple-900/50">
+                <h3 class="text-sm font-black text-purple-400 uppercase tracking-wide flex items-center gap-2 border-b border-slate-800 pb-3">
+                    <i class="fa-solid fa-truck-ramp-box text-purple-400"></i> ባችንግ ፕላንት ምርት፣ የጥሬ ዕቃ እጥረት ማረጋገጫ እና ጌት ፓስ
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የሽያጭ ማዘዣ (SO) ምረጥ</label><select id="prodSalesOrderSelect" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold"></select></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የሚጫን መጠን (m³)</label><input type="number" id="prodDispatchVolume" placeholder="Load Volume" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የአሽከርካሪ ስም</label><input type="text" id="prodDriverName" placeholder="ለምሳሌ: ከበደ" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold"></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የመኪና ታርጋ ቁጥር</label><input type="text" id="prodMixerPlate" placeholder="ለምሳሌ: 3-00523" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold"></div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-2">
+                    <div><label class="block text-[10px] text-amber-400 font-bold mb-1">GPS የጉዞ ርቀት (km)</label><input type="number" id="prodGpsDistance" placeholder="Distance in km" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono text-amber-400"></div>
+                    <div class="flex items-end"><button onclick="openQrScanner()" class="w-full bg-slate-800 hover:bg-slate-700 text-teal-400 border border-teal-500/40 font-bold py-2.5 px-4 rounded-xl text-xs"><i class="fa-solid fa-qrcode"></i> QR Code Waybill ስካን አድርግ</button></div>
+                </div>
+                <div class="flex justify-end pt-2">
+                    <button onclick="processProductionDispatch()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 px-6 rounded-xl text-xs shadow-lg transition-all"><i class="fa-solid fa-truck-fast"></i> እጥረት ቼክ አድርግ፣ ጭነት መዝግብና ጌት ፓስ አውጣ</button>
+                </div>
+            </div>
+
+            <!-- የፈረቃ መረካከቢያ ሪፖርት -->
+            <div class="glass-card p-5 rounded-2xl space-y-4 shadow-xl border-blue-900/50">
+                <h4 class="text-xs font-bold text-blue-400 uppercase tracking-wider"><i class="fa-solid fa-clock-rotate-left text-blue-400"></i> የፈረቃ መረካከቢያ እና አውቶማቲክ ምርት ድምር (Shift Handover & Auto-Sum Log)</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">ፈረቃ</label><select id="shiftTypeSelect" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold"><option value="Day Shift (ቀን)">የቀን ፈረቃ (Day)</option><option value="Night Shift (ማታ)">የሌሊት ፈረቃ (Night)</option></select></div>
+                    <div><label class="block text-[10px] text-teal-400 font-bold mb-1">አስረካቢ ኦፕሬተር (Outgoing)</label><input type="text" id="shiftOutgoingOp" placeholder="ለምሳሌ: ሺመልስ" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold"></div>
+                    <div><label class="block text-[10px] text-amber-400 font-bold mb-1">ተረካቢ ኦፕሬተር (Incoming)</label><input type="text" id="shiftIncomingOp" placeholder="ለምሳሌ: ከበደ" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold"></div>
+                    <div><label class="block text-[10px] text-emerald-400 font-bold mb-1">የተመረተ መጠን (m³)</label><input type="number" id="shiftVolProduced" placeholder="ምርት መጠን m³" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-emerald-400 font-mono font-bold"></div>
+                </div>
+                <div class="flex justify-end pt-2">
+                    <button onclick="submitShiftHandover()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-6 rounded-xl text-xs shadow-lg"><i class="fa-solid fa-calculator"></i> ፈረቃ መዝግብና ምርት አጠቃል</button>
+                </div>
+                <div class="overflow-x-auto pt-2">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead><tr class="border-b border-slate-800 text-slate-400 font-mono bg-slate-950/40"><th class="p-2.5">ቀንና ሰዓት</th><th class="p-2.5">ፈረቃ</th><th class="p-2.5 text-teal-400">አስረካቢ -> ተረካቢ</th><th class="p-2.5 text-emerald-400">የተመረተ (m³)</th><th class="p-2.5">ሁኔታ</th></tr></thead>
+                        <tbody id="shiftLogTableBody"><tr><td colspan="5" class="p-3 text-center text-slate-500">ምንም የፈረቃ ሪፖርት የለም</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. ላብራቶሪና QC ታብ -->
+        <div id="tab-lab" class="tab-content space-y-6">
+            <div class="glass-card p-5 rounded-2xl space-y-4 shadow-xl border-teal-900/50">
+                <h3 class="text-sm font-black text-teal-400 uppercase tracking-wide flex items-center gap-2 border-b border-slate-800 pb-3">
+                    <i class="fa-solid fa-flask text-teal-400"></i> የላብራቶሪ ቀመር አስተዳደር (Mix Design & Cube Test)
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                    <div><label class="block text-[10px] text-amber-400 font-bold mb-1">ደንበኛ / ድርጅት / ሳይት</label><select id="labClientSelect" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold"><option value="">-- ደንበኛ ይምረጡ --</option></select></div>
+                    <div>
+                        <label class="block text-[10px] text-amber-400 font-bold mb-1">የኮንክሪት ግሬድ</label>
+                        <select id="labConcreteGrade" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold">
+                            <option value="C-5">C-5</option><option value="C-10">C-10</option><option value="C-15">C-15</option><option value="C-20">C-20</option><option value="C-25">C-25</option><option value="C-30" selected>C-30</option><option value="C-35">C-35</option><option value="C-37">C-37</option><option value="C-40">C-40</option><option value="C-45">C-45</option><option value="C-50">C-50</option><option value="C-55">C-55</option><option value="C-60">C-60</option><option value="C-70">C-70</option><option value="C-80">C-80</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-amber-400 font-bold mb-1">ሲሚንቶ ዓይነት</label>
+                        <select id="labCementType" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold">
+                            <option value="OPC-Lemi">OPC Lemi</option><option value="OPC-Dangote">OPC Dangote</option><option value="OPC-Ethio">OPC Ethio</option>
+                            <option value="PPC-Dangote" selected>PPC Dangote</option><option value="PPC-Lemi">PPC Lemi</option><option value="PPC-Ethio">PPC Ethio</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-yellow-400 font-bold mb-1">አሸዋ ዓይነት</label>
+                        <select id="labSandType" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold">
+                            <option value="Silica-Sand">Silica Sand</option><option value="Crushed-Sand" selected>Crushed Sand</option><option value="Natural-Sand">Natural Sand</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 text-xs pt-2">
+                    <div><label class="block text-[10px] text-blue-400 font-bold mb-1">አግሪጌት 00 (kg)</label><input type="number" id="mixAgg00" value="150" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div><label class="block text-[10px] text-blue-400 font-bold mb-1">አግሪጌት 01 (kg)</label><input type="number" id="mixAgg01" value="450" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div><label class="block text-[10px] text-blue-400 font-bold mb-1">አግሪጌት 02 (kg)</label><input type="number" id="mixAgg02" value="500" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div>
+                        <label class="block text-[10px] text-emerald-400 font-bold mb-1">ኬሚካል ዓይነት</label>
+                        <select id="labChemType" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold">
+                            <option value="Admixture-GP80" selected>Admixture GP80</option>
+                            <option value="Admixture-GT30">Admixture GT30</option>
+                        </select>
+                    </div>
+                    <div><label class="block text-[10px] text-emerald-400 font-bold mb-1">ኬሚካል መጠን (L)</label><input type="number" id="mixChem" value="3.5" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-2">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">ሲሚንቶ መጠን (kg)</label><input type="number" id="mixOpc" value="350" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">አሸዋ መጠን (kg)</label><input type="number" id="mixSand" value="750" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">ውሃ መጠን (L)</label><input type="number" id="mixWater" value="175" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                </div>
+
+                <div class="flex justify-end pt-2">
+                    <button onclick="saveMixDesign()" class="bg-teal-600 hover:bg-teal-500 text-white font-bold py-2.5 px-6 rounded-xl text-xs shadow-lg"><i class="fa-solid fa-plus-circle"></i> ቀመር መዝግብና አጽድቅ</button>
+                </div>
+                <div class="overflow-x-auto pt-2">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead><tr class="border-b border-slate-800 text-slate-400 font-mono bg-slate-950/40"><th class="p-3">ድርጅት / ሳይት</th><th class="p-3">ግሬድ</th><th class="p-3">ሲሚንቶና አሸዋ</th><th class="p-3">ጠጠሮች (00, 01, 02)</th><th class="p-3">ኬሚካል</th><th class="p-3">መጠን (Kg/L)</th><th class="p-3 text-center">ፕሪንት / ደረሰኝ አሳይ</th></tr></thead>
+                        <tbody id="mixDesignTableBody"><tr><td colspan="7" class="p-3 text-center text-slate-500">ምንም ቀመር የለም</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Cube Test -->
+            <div class="glass-card p-5 rounded-2xl space-y-4 shadow-xl border-amber-900/50">
+                <h4 class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-vial-circle-check text-amber-400"></i> የኮንክሪት ክዩብ ጥራት ሙከራ ሪፖርት (3, 7, 14, 28 & 45 Days Cube Test)</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 text-xs">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">ናሙና ID / ድርጅት</label><input type="text" id="qcSampleId" placeholder="SO-1001 (ድርጅት)" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div>
+                        <label class="block text-[10px] text-slate-400 font-bold mb-1">ግሬድ</label>
+                        <select id="qcGrade" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold">
+                            <option value="C-5">C-5</option><option value="C-10">C-10</option><option value="C-15">C-15</option><option value="C-20">C-20</option><option value="C-25">C-25</option><option value="C-30" selected>C-30</option><option value="C-35">C-35</option><option value="C-37">C-37</option><option value="C-40">C-40</option><option value="C-45">C-45</option><option value="C-50">C-50</option><option value="C-55">C-55</option><option value="C-60">C-60</option><option value="C-70">C-70</option><option value="C-80">C-80</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-slate-400 font-bold mb-1">የሙከራ ቀን (Test Days)</label>
+                        <select id="qcTestType" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold">
+                            <option value="3 Days">3 Days Test</option>
+                            <option value="7 Days">7 Days Test</option>
+                            <option value="14 Days">14 Days Test</option>
+                            <option value="28 Days" selected>28 Days Test</option>
+                            <option value="45 Days">45 Days Test</option>
+                        </select>
+                    </div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">ጥንካሬ (MPa)</label><input type="number" step="0.1" id="qcStrengthResult" placeholder="MPa" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div><label class="block text-[10px] text-teal-400 font-bold mb-1">የላብራቶሪ ኃላፊ</label><input type="text" id="qcTestedBy" placeholder="Tester Name" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                </div>
+                <div class="flex justify-end pt-2">
+                    <button onclick="submitCubeTest()" class="bg-amber-600 hover:bg-amber-500 text-white font-bold py-2.5 px-6 rounded-xl text-xs shadow-lg">ክዩብ ቴስት መዝግብና አጽድቅ</button>
+                </div>
+                <div class="overflow-x-auto pt-2">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead><tr class="border-b border-slate-800 text-slate-400 font-mono bg-slate-950/40"><th class="p-2.5">ቀን</th><th class="p-2.5">ናሙና ID</th><th class="p-2.5">ግሬድ</th><th class="p-2.5">የሙከራ ወቅት</th><th class="p-2.5 text-emerald-400">ጥንካሬ</th><th class="p-2.5">ሁኔታ</th></tr></thead>
+                        <tbody id="cubeTestTableBody"><tr><td colspan="6" class="p-3 text-center text-slate-500">ምንም የኩብ ቴስት የለም</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. ፋይናንስና ደረሰኝ ታብ -->
+        <div id="tab-finance" class="tab-content space-y-6">
+            <div class="glass-card p-5 rounded-2xl space-y-4 shadow-xl border-emerald-900/50 relative overflow-hidden">
+                <h3 class="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-file-invoice text-emerald-400"></i> የክፍያ መቀበያ እና ማጽደቂያ ፓነል (Duplicate Guard Enabled)</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs pt-2">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የሽያጭ ማዘዣ (SO)</label><select id="finOrderSelect" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold" onchange="previewFinanceOrder()"></select></div>
+                    <div>
+                        <label class="block text-[10px] text-amber-400 font-bold mb-1">የክፍያ መንገድ</label>
+                        <select id="finPaymentMode" class="w-full bg-slate-900 border border-amber-800/80 rounded-xl p-2.5 text-amber-400 font-bold"><option value="CBE Bank Transfer">CBE</option><option value="Telebirr">Telebirr</option><option value="Awash Bank">Awash</option><option value="Cash">Cash</option></select>
+                    </div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የባንክ ሪፈረንስ ቁጥር</label><input type="text" id="finPaymentRef" placeholder="Ref No e.g. FT26..." class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono"></div>
+                    <div><label class="block text-[10px] text-emerald-400 font-bold mb-1">የሚከፈለው መጠን (ETB)</label><input type="number" id="finPaidAmountInput" placeholder="መጠን" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-emerald-400 font-mono font-bold"></div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-2 border-t border-slate-800/50">
+                    <div><label class="block text-[10px] text-teal-400 font-bold mb-1">ካሼር (Cashier)</label><input type="text" id="finCashier" placeholder="Cashier Name" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-[10px] text-yellow-400 font-bold mb-1">አረጋጋጭ (Verifier)</label><input type="text" id="finVerifier" placeholder="Verifier Name" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-[10px] text-orange-400 font-bold mb-1">አጸዳቂ/ማኔጀር (Manager)</label><input type="text" id="finManager" placeholder="Manager Name" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                </div>
+                <div class="flex justify-end pt-2">
+                    <button onclick="issueFinanceInvoice()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-6 rounded-xl transition-all text-xs shadow-lg"><i class="fa-solid fa-check-to-slot"></i> ደረሰኝ ቆርጠህ አጽድቅ</button>
+                </div>
+            </div>
+
+            <div class="glass-card p-5 rounded-2xl space-y-4">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">የተሰጡ ደረሰኞች እና የፋይናንስ ታሪክ</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead><tr class="border-b border-slate-800 text-slate-400 font-mono bg-slate-950/40"><th class="p-3">ደረሰኝ</th><th class="p-3">SO ID</th><th class="p-3">ደንበኛ</th><th class="p-3">ክፍያ መንገድ / ሪፈረንስ</th><th class="p-3 text-emerald-400">መጠን</th><th class="p-3 text-teal-400">ኃላፊዎች (C/V/M)</th><th class="p-3 text-center">ፕሪንት / ደረሰኝ አሳይ</th></tr></thead>
+                        <tbody id="financeInvoiceTableBody">
+                            <tr><td colspan="7" class="p-4 text-center text-slate-500">ምንም ደረሰኝ አልተቆረጠም</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="glass-card p-5 rounded-2xl space-y-4">
+                <h4 class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2"><i class="fa-solid fa-clock text-amber-400"></i> የደንበኞች የዱቤ ሁኔታና ቆይታ ጊዜ Aging ሪፖርት</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead><tr class="border-b border-slate-800 text-slate-400 font-mono bg-slate-950/40"><th class="p-3">ደንበኛ</th><th class="p-3">የብድር ጣሪያ</th><th class="p-3 text-red-400">የተጠቀመበት ዱቤ</th><th class="p-3 text-emerald-400">ቀሪ የብድር መጠን</th><th class="p-3 text-amber-400">Aging</th></tr></thead>
+                        <tbody id="clientCreditTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. HR & Driver Commission ታብ -->
+        <div id="tab-hr" class="tab-content space-y-6">
+            <div class="glass-card p-5 rounded-2xl space-y-4 shadow-xl border-pink-900/50">
+                <h3 class="text-sm font-black text-pink-400 uppercase tracking-wide flex items-center gap-2 border-b border-slate-800 pb-3">
+                    <i class="fa-solid fa-user-gear text-pink-400"></i> የአሽከርካሪዎች የጉዞ ኮሚሽን እና ወጪ ቁጥጥር (HR & Driver Trip Allowance & Expense Accumulator)
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የአሽከርካሪ ስም</label><input type="text" id="hrDriverName" placeholder="Driver Name" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-bold"></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የመኪና ታርጋ</label><input type="text" id="hrMixerPlate" placeholder="Plate e.g. 3-00523" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-[10px] text-slate-400 font-bold mb-1">የአንድ ጉዞ (Trip) ኮሚሽን (ETB)</label><input type="number" id="hrTripRate" value="300" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-white font-mono text-emerald-400"></div>
+                    <div class="flex items-end"><button onclick="addDriverProfile()" class="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold py-2.5 rounded-xl text-xs shadow-lg"><i class="fa-solid fa-plus"></i> አሽከርካሪ መዝግብ</button></div>
+                </div>
+                <div class="overflow-x-auto pt-4">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 font-mono bg-slate-950/40">
+                                <th class="p-3">የአሽከርካሪ ስም</th><th class="p-3">ታርጋ</th><th class="p-3">የተደረጉ ምልልሶች (Trips)</th><th class="p-3 text-emerald-400">የተከማቸ ኮሚሽን (ETB)</th><th class="p-3 text-amber-400">ጠቅላላ የጉዞ ወጪ (Total Expenses)</th><th class="p-3">ሁኔታ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="driverHrTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const defaultPlantData = {
+            "Bole Plant": {
+                stocks: {
+                    "OPC-Lemi": 500, "OPC-Dangote": 500, "OPC-Ethio": 500,
+                    "PPC-Dangote": 500, "PPC-Lemi": 500, "PPC-Ethio": 500,
+                    "Silica-Sand": 200, "Crushed-Sand": 200, "Natural-Sand": 200,
+                    "Agg-00": 300, "Agg-01": 300, "Agg-02": 300,
+                    "Admixture-GP80": 1000, "Admixture-GT30": 1000, "Diesel-Fuel": 450
+                },
+                totalRevenue: 0,
+                totalMaterialExpense: 0
+            },
+            "Saris Plant": {
+                stocks: {
+                    "OPC-Lemi": 300, "OPC-Dangote": 300, "OPC-Ethio": 300,
+                    "PPC-Dangote": 300, "PPC-Lemi": 300, "PPC-Ethio": 300,
+                    "Silica-Sand": 150, "Crushed-Sand": 150, "Natural-Sand": 150,
+                    "Agg-00": 200, "Agg-01": 200, "Agg-02": 200,
+                    "Admixture-GP80": 500, "Admixture-GT30": 500, "Diesel-Fuel": 3000
+                },
+                totalRevenue: 0,
+                totalMaterialExpense: 0
+            },
+            "Gerji Plant": {
+                stocks: {
+                    "OPC-Lemi": 400, "OPC-Dangote": 400, "OPC-Ethio": 400,
+                    "PPC-Dangote": 400, "PPC-Lemi": 400, "PPC-Ethio": 400,
+                    "Silica-Sand": 180, "Crushed-Sand": 180, "Natural-Sand": 180,
+                    "Agg-00": 250, "Agg-01": 250, "Agg-02": 250,
+                    "Admixture-GP80": 800, "Admixture-GT30": 800, "Diesel-Fuel": 4000
+                },
+                totalRevenue: 0,
+                totalMaterialExpense: 0
+            }
+        };
+
+        let plantData = JSON.parse(localStorage.getItem('bama_plantData')) || defaultPlantData;
+        let activePlant = "Bole Plant";
+        let stocks = plantData[activePlant].stocks;
+
+        let clients = JSON.parse(localStorage.getItem('bama_clients')) || [
+            { name: "ናይል ኮንስትራክሽን", creditLimit: 200000, usedCredit: 50000, daysOverdue: 15, phone: "+251911223344" },
+            { name: "ሃይሌ ግንባታ", creditLimit: 150000, usedCredit: 120000, daysOverdue: 42, phone: "+251922334455" }
+        ];
+
+        let suppliers = JSON.parse(localStorage.getItem('bama_suppliers')) || [
+            { name: "ለሚ ሲሚንቶ ፋብሪካ", item: "OPC Lemi", phone: "+251911112233" },
+            { name: "ዳንጎቴ ሲሚንቶ", item: "PPC Dangote", phone: "+251922445566" }
+        ];
+
+        let drivers = JSON.parse(localStorage.getItem('bama_drivers')) || [
+            { name: "ከበደ", plate: "3-00523", rate: 300, trips: 1, expenses: 300 },
+            { name: "ተስፋዬ ገብሬ", plate: "B-67890", rate: 300, trips: 8, expenses: 2400 }
+        ];
+
+        let salesOrders = JSON.parse(localStorage.getItem('bama_salesOrders')) || [];
+        let intakeHistory = JSON.parse(localStorage.getItem('bama_intakeHistory')) || [];
+        let financeInvoices = JSON.parse(localStorage.getItem('bama_financeInvoices')) || [];
+        let fleetLogs = JSON.parse(localStorage.getItem('bama_fleetLogs')) || [];
+        let cubeTests = JSON.parse(localStorage.getItem('bama_cubeTests')) || [];
+        let mixFormulas = JSON.parse(localStorage.getItem('bama_mixFormulas')) || [];
+        let shiftLogs = JSON.parse(localStorage.getItem('bama_shiftLogs')) || [];
+
+        let pendingAdminActionType = null;
+        const ADMIN_SECRET_PIN = "2026";
+
+        function saveStateToStorage() {
+            localStorage.setItem('bama_plantData', JSON.stringify(plantData));
+            localStorage.setItem('bama_clients', JSON.stringify(clients));
+            localStorage.setItem('bama_suppliers', JSON.stringify(suppliers));
+            localStorage.setItem('bama_drivers', JSON.stringify(drivers));
+            localStorage.setItem('bama_salesOrders', JSON.stringify(salesOrders));
+            localStorage.setItem('bama_intakeHistory', JSON.stringify(intakeHistory));
+            localStorage.setItem('bama_financeInvoices', JSON.stringify(financeInvoices));
+            localStorage.setItem('bama_fleetLogs', JSON.stringify(fleetLogs));
+            localStorage.setItem('bama_cubeTests', JSON.stringify(cubeTests));
+            localStorage.setItem('bama_mixFormulas', JSON.stringify(mixFormulas));
+            localStorage.setItem('bama_shiftLogs', JSON.stringify(shiftLogs));
+        }
+
+        function showToast(message, isError = false) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast-item ${isError ? 'error' : ''}`;
+            toast.innerHTML = `<i class="fa-solid ${isError ? 'fa-circle-exclamation text-red-400' : 'fa-circle-check text-emerald-400'} text-base"></i><span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function downloadJsonBackup() {
+            const fullAppData = { plantData, clients, suppliers, drivers, salesOrders, intakeHistory, financeInvoices, fleetLogs, cubeTests, mixFormulas, shiftLogs, timestamp: new Date().toISOString() };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullAppData, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `batching_plant_backup_${new Date().toISOString().slice(0,10)}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+            showToast("አውቶማቲክ የዳታ ባክአፕ ፋይል (JSON) በስኬት ወርዷል!");
+        }
+
+        function requestAdminAction(actionType) {
+            pendingAdminActionType = actionType;
+            document.getElementById('adminPinInput').value = '';
+            document.getElementById('admin-pin-modal').classList.remove('hidden');
+        }
+        function closeAdminPinModal() {
+            document.getElementById('admin-pin-modal').classList.add('hidden');
+            pendingAdminActionType = null;
+        }
+        function verifyAdminPin() {
+            const enteredPin = document.getElementById('adminPinInput').value.trim();
+            if (enteredPin === ADMIN_SECRET_PIN) {
+                closeAdminPinModal();
+                if (pendingAdminActionType === 'RESET') {
+                    if (confirm('እርግጠኛ ነዎት ሁሉንም የስርዓት መረጃዎች ማፅዳት ይፈልጋሉ?')) {
+                        localStorage.clear();
+                        showToast("ሲስተሙ ሙሉ በሙሉ ታድሷል!");
+                        setTimeout(() => location.reload(), 1000);
+                    }
+                }
+            } else {
+                showToast("የገባው የአስተዳዳሪ ፒን ቁጥር ስህተት ነው!", true);
+            }
+        }
+
+        function initApp() {
+            renderStocks();
+            checkStockAlerts();
+            updateCustomerDropdowns();
+            updateLabClientDropdown();
+            renderSuppliersTable();
+            renderClientsCreditTable();
+            renderSalesOrders();
+            updateProductionDropdown();
+            updateFinanceDropdown();
+            renderFinanceInvoices();
+            renderDriversTable();
+            renderFleetLogs();
+            renderIntakeHistory();
+            renderMixDesigns();
+            renderCubeTests();
+            renderShiftLogs();
+            updateNetProfitDashboard();
+            initChart();
+        }
+
+        function switchPlantLocation() {
+            activePlant = document.getElementById('activePlantSelect').value;
+            stocks = plantData[activePlant].stocks;
+            updateNetProfitDashboard();
+            renderStocks();
+            checkStockAlerts();
+            showToast(`አሁን ወደ ${activePlant} ተቀይሯል!`);
+        }
+
+        function applyUserRole() {
+            const role = document.getElementById('userRoleSelect').value;
+            const allTabs = ['tab-dashboard', 'tab-marketing', 'tab-production', 'tab-lab', 'tab-finance', 'tab-hr'];
+            allTabs.forEach(t => {
+                const btn = document.getElementById('btn-' + t);
+                if (btn) btn.style.display = 'inline-flex';
+            });
+            if (role === 'STORE') {
+                switchTab('tab-dashboard');
+                ['tab-marketing','tab-lab','tab-finance','tab-hr'].forEach(t => document.getElementById('btn-'+t).style.display='none');
+            } else if (role === 'MARKETING') {
+                switchTab('tab-marketing');
+                ['tab-production','tab-lab','tab-finance','tab-hr'].forEach(t => document.getElementById('btn-'+t).style.display='none');
+            } else if (role === 'PRODUCTION') {
+                switchTab('tab-production');
+                ['tab-marketing','tab-lab','tab-finance','tab-hr'].forEach(t => document.getElementById('btn-'+t).style.display='none');
+            } else if (role === 'HR') {
+                switchTab('tab-hr');
+                ['tab-marketing','tab-production','tab-lab','tab-finance'].forEach(t => document.getElementById('btn-'+t).style.display='none');
+            }
+            showToast(`ሚና ወደ [${role}] ተስተካክሏል`);
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('bg-blue-600', 'text-white');
+                el.classList.add('glass-card', 'text-slate-400');
+            });
+            document.getElementById(tabId).classList.add('active');
+            const activeBtn = document.getElementById('btn-' + tabId);
+            if (activeBtn) {
+                activeBtn.classList.remove('glass-card', 'text-slate-400');
+                activeBtn.classList.add('bg-blue-600', 'text-white');
+            }
+        }
+
+        function renderStocks() {
+            for (let key in stocks) {
+                const el = document.getElementById('display-' + key);
+                if (el) {
+                    el.innerText = (stocks[key] || 0).toLocaleString();
+                    if (stocks[key] < 50) {
+                        el.parentElement.parentElement.classList.add('reorder-needed');
+                    } else {
+                        el.parentElement.parentElement.classList.remove('reorder-needed');
+                    }
+                }
+            }
+        }
+
+        function checkStockAlerts() {
+            let lowItems = [];
+            for (let key in stocks) {
+                if (stocks[key] < 50) lowItems.push(`${key} (${stocks[key]})`);
+            }
+            if (stocks['Diesel-Fuel'] < 500) {
+                lowItems.push(`አስቸኳይ ናፍጣ ግዢ ያስፈልጋል! (${stocks['Diesel-Fuel']} L ቀርቷል)`);
+            }
+            const banner = document.getElementById('stock-alert-banner');
+            const alertText = document.getElementById('stock-alert-text');
+            if (lowItems.length > 0) {
+                alertText.innerText = `በ ${activePlant} ውስጥ የሚከተሉት ዕቃዎች አጥረዋል፦ ${lowItems.join(' | ')}`;
+                banner.classList.remove('hidden');
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        function triggerCuringReminders() {
+            const channel = document.getElementById('notificationChannel').value;
+            salesOrders.forEach(o => {
+                if (o.phone) {
+                    const msg = `AI CURING & WEATHER REMINDER: Dear ${o.customerName}, please ensure proper water curing (የውሃ ማጠጣት) for concrete site ${o.siteName} to reach target strength!`;
+                    sendMultiChannelNotification(o.phone, msg, channel);
+                }
+            });
+            showToast("የኮንክሪት ማጠንከሪያ እና የውሃ ማጠጫ (Curing) ማሳሰቢያዎች በስኬት ተልከዋል!");
+        }
+
+        function saveSupplierProfile() {
+            const name = document.getElementById('supplierNameInput').value.trim();
+            const item = document.getElementById('supplierItemInput').value.trim();
+            const phone = document.getElementById('supplierPhoneInput').value.trim();
+            if (!name || !item || !phone) {
+                showToast('እባክዎን የአቅራቢ ስም፣ ዕቃ እና ስልክ ቁጥር ይሙሉ!', true);
+                return;
+            }
+            suppliers.push({ name, item, phone });
+            saveStateToStorage();
+            renderSuppliersTable();
+            showToast(`አቅራቢ ${name} በስኬት ተመዝግቧል!`);
+        }
+
+        function renderSuppliersTable() {
+            const tbody = document.getElementById('suppliersTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (suppliers.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-slate-500">ምንም አቅራቢ አልተመዘገበም</td></tr>`;
+                return;
+            }
+            suppliers.forEach((s, index) => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                        <td class="p-2.5 font-bold text-white">${s.name}</td>
+                        <td class="p-2.5 text-amber-400">${s.item}</td>
+                        <td class="p-2.5 font-mono text-teal-400">${s.phone}</td>
+                        <td class="p-2.5 text-center"><button onclick="sendSupplierPurchaseOrder(${index})" class="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded text-xs font-bold shadow"><i class="fa-solid fa-paper-plane"></i> ፖ (PO) ላክ</button></td>
+                    </tr>
+                `;
+            });
+        }
+
+        function sendSupplierPurchaseOrder(index) {
+            const s = suppliers[index];
+            if (!s) return;
+            const channel = document.getElementById('notificationChannel').value;
+            const message = `BATCHING PLANT Purchase Requisition (PO): Dear ${s.name}, our stock for ${s.item} is low at ${activePlant}. Please supply 200 units urgently. Ref: PO-2026-${Math.floor(100+Math.random()*900)}`;
+            sendMultiChannelNotification(s.phone, message, channel);
+        }
+
+        function triggerAutoSupplierPO() {
+            let lowItems = [];
+            for (let key in stocks) {
+                if (stocks[key] < 50) lowItems.push(key);
+            }
+            if (lowItems.length === 0) {
+                showToast('የተሟላ ስቶክ አለ፤ አዳዲስ አቅራቢ ፖ ማላክ አያስፈልግም።');
+                return;
+            }
+            suppliers.forEach(s => {
+                if (lowItems.some(i => s.item.toLowerCase().includes(i.toLowerCase()))) {
+                    const channel = document.getElementById('notificationChannel').value;
+                    const message = `AUTO-PO ALERT: የ ${s.item} ክምችት በ ${activePlant} አጥሯል። እባክዎን ተጨማሪ ማቴሪያል ይላኩ።`;
+                    sendMultiChannelNotification(s.phone, message, channel);
+                }
+            });
+            showToast('አውቶማቲክ የአቅራቢ ፖ ማሳወቂያዎች በኤስኤምኤስ እና ቴሌግራም ተልከዋል!');
+        }
+
+        function updateNetProfitDashboard() {
+            const totalRev = plantData[activePlant].totalRevenue || 0;
+            const materialExp = plantData[activePlant].totalMaterialExpense || 0;
+            let totalDriverExp = drivers.reduce((sum, d) => sum + (d.expenses || (d.trips * d.rate)), 0);
+            const totalDieselCost = (5000 - (stocks['Diesel-Fuel'] || 5000)) * 75;
+            const totalExp = totalDriverExp + totalDieselCost + materialExp;
+            const netProfit = totalRev - totalExp;
+
+            document.getElementById('stat-total-revenue').innerText = totalRev.toLocaleString() + ' ETB';
+            document.getElementById('net-rev-display').innerText = totalRev.toLocaleString() + ' ETB';
+            document.getElementById('net-exp-display').innerText = totalExp.toLocaleString() + ' ETB';
+            document.getElementById('net-profit-display').innerText = netProfit.toLocaleString() + ' ETB';
+        }
+
+        function filterStocks() {
+            const query = document.getElementById('searchBar').value.toLowerCase();
+            document.querySelectorAll('.stock-card').forEach(card => {
+                const itemName = card.getAttribute('data-item').toLowerCase();
+                card.style.display = itemName.includes(query) ? 'block' : 'none';
+            });
+        }
+
+        function processMaterialIntake() {
+            const item = document.getElementById('intakeItemSelect').value;
+            const amount = parseFloat(document.getElementById('intakeAmount').value) || 0;
+            const unitPrice = parseFloat(document.getElementById('intakeUnitPrice').value) || 0;
+            const supplier = document.getElementById('intakeSupplier').value.trim();
+            if (amount <= 0 || !supplier || unitPrice <= 0) {
+                showToast('እባክዎን መጠን፣ የአንድ unit ዋጋ እና አቅራቢ በትክክል ይሙሉ!', true);
+                return;
+            }
+
+            const totalPrice = amount * unitPrice;
+            stocks[item] = (stocks[item] || 0) + amount;
+            plantData[activePlant].totalMaterialExpense = (plantData[activePlant].totalMaterialExpense || 0) + totalPrice;
+
+            intakeHistory.unshift({
+                date: new Date().toLocaleString(),
+                item, amount, totalPrice,
+                supplier: supplier + ' (' + (document.getElementById('intakeDriver').value.trim() || 'N/A') + ')',
+                receiver: document.getElementById('intakeReceiver').value.trim() || 'ስቶር',
+                checkedBy: document.getElementById('intakeCheckedBy').value.trim() || 'ላብ',
+                approvedBy: document.getElementById('intakeApprovedBy').value.trim() || 'ማኔጀር'
+            });
+            saveStateToStorage();
+            renderStocks();
+            checkStockAlerts();
+            renderIntakeHistory();
+            updateNetProfitDashboard();
+            showToast(`የጥሬ ዕቃ ገቢ (ዋጋ: ${totalPrice.toLocaleString()} ETB) በስኬት ተመዝግቧል!`);
+        }
+
+        function renderIntakeHistory() {
+            const tbody = document.getElementById('materialIntakeTableBody');
+            tbody.innerHTML = '';
+            intakeHistory.forEach(h => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                        <td class="p-3 font-mono text-slate-400">${h.date}</td>
+                        <td class="p-3 font-bold text-white">${h.item}</td>
+                        <td class="p-3 font-mono text-emerald-400">+${h.amount.toLocaleString()}</td>
+                        <td class="p-3 font-mono text-amber-400 font-bold">${(h.totalPrice || 0).toLocaleString()} ETB</td>
+                        <td class="p-3">${h.supplier}</td>
+                        <td class="p-3 text-teal-400">${h.receiver}</td>
+                        <td class="p-3 text-yellow-400">${h.checkedBy}</td>
+                        <td class="p-3 text-orange-400">${h.approvedBy}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function triggerPlcAutoBatch() {
+            const activeSo = salesOrders.find(o => o.status === 'ACTIVE');
+            if (!activeSo) {
+                showToast('PLC Auto-Batch ለመስራት የሚያስችል ክፍት የሽያጭ ማዘዣ (SO) የለም!', true);
+                return;
+            }
+            const batchVol = 6;
+            stocks['OPC-Lemi'] -= 20;
+            stocks['Silica-Sand'] -= 5;
+            stocks['Agg-00'] -= 8;
+            stocks['Diesel-Fuel'] -= 10;
+            activeSo.dispatchedVolume += batchVol;
+            saveStateToStorage();
+            renderStocks();
+            checkStockAlerts();
+            renderSalesOrders();
+            updateNetProfitDashboard();
+            showToast(`[PLC Automated Batching Complete] የ 6m³ ኮንክሪት በራስ-ሰር ተመዝኗል!`);
+        }
+
+        function executeQuickClientAdd() {
+            const name = document.getElementById('mktQuickClientName').value.trim();
+            const limit = parseFloat(document.getElementById('mktQuickCreditLimit').value) || 0;
+            if (!name) {
+                showToast('ስም ያስገቡ!', true);
+                return;
+            }
+            clients.push({ name, creditLimit: limit, usedCredit: 0, daysOverdue: 0, phone: "+251911000000" });
+            saveStateToStorage();
+            updateCustomerDropdowns();
+            updateLabClientDropdown();
+            renderClientsCreditTable();
+            showToast(`ደንበኛ ${name} በስኬት ተመዝግቧል!`);
+        }
+
+        function updateCustomerDropdowns() {
+            const select = document.getElementById('soCustomerSelect');
+            select.innerHTML = '<option value="">-- ደንበኛ ይምረጡ --</option>';
+            clients.forEach(c => select.innerHTML += `<option value="${c.name}">${c.name} (${c.phone})</option>`);
+        }
+
+        function updateLabClientDropdown() {
+            const select = document.getElementById('labClientSelect');
+            if (!select) return;
+            select.innerHTML = '<option value="">-- ደንበኛ / ድርጅት ይምረጡ --</option>';
+            clients.forEach(c => select.innerHTML += `<option value="${c.name}">${c.name}</option>`);
+        }
+
+        function createNewSalesOrder() {
+            const customerName = document.getElementById('soCustomerSelect').value;
+            const paymentType = document.getElementById('soPaymentType').value;
+            const siteName = document.getElementById('soSiteName').value.trim();
+            const grade = document.getElementById('soConcreteGrade').value;
+            const totalVolume = parseFloat(document.getElementById('soTotalVolume').value) || 0;
+            const unitPrice = parseFloat(document.getElementById('soUnitPrice').value) || 0;
+            let clientPhone = document.getElementById('soClientPhone').value.trim();
+            const channel = document.getElementById('notificationChannel').value;
+
+            if (!customerName || !siteName || totalVolume <= 0 || unitPrice <= 0 || !clientPhone) {
+                showToast('እባክዎን ሁሉንም መረጃዎች (የደንበኛ ስልክ/ቴሌግራም ቁጥርን ጨምሮ) በትክክል ይሙሉ!', true);
+                return;
+            }
+
+            const totalCost = totalVolume * unitPrice;
+            const soId = 'SO-' + Math.floor(1000 + Math.random() * 9000);
+            salesOrders.push({
+                id: soId, customerName, paymentType, siteName, grade, totalVolume, unitPrice, totalCost,
+                dispatchedVolume: 0, paidAmount: 0, status: 'ACTIVE', phone: clientPhone
+            });
+
+            saveStateToStorage();
+            renderSalesOrders();
+            updateProductionDropdown();
+            updateFinanceDropdown();
+
+            const message = `BATCHING PLANT: አዲስ SO #${soId} (${customerName}), ሳይት: ${siteName}, ግሬድ: ${grade}, መጠን: ${totalVolume}m³, ዋጋ: ${totalCost.toLocaleString()} ETB`;
+            sendMultiChannelNotification(clientPhone, message, channel);
+        }
+
+        function sendMultiChannelNotification(target, message, channel) {
+            document.getElementById('msg-modal-target').innerText = `Target: ${target} | Channel: ${channel}`;
+            document.getElementById('msg-modal-body').innerText = message;
+            
+            if (channel === 'SMS') {
+                document.getElementById('msg-modal-title').innerText = "ትክክለኛ ኤስኤምኤስ (SMS) ተልኳል";
+                document.getElementById('msg-modal-icon').className = "fa-solid fa-comment-sms text-3xl text-emerald-400 animate-bounce";
+            } else if (channel === 'TELEGRAM') {
+                document.getElementById('msg-modal-title').innerText = "የቴሌግራም ማሳወቂያ ተልኳል";
+                document.getElementById('msg-modal-icon').className = "fa-brands fa-telegram text-3xl text-sky-400 animate-bounce";
+            } else {
+                document.getElementById('msg-modal-title').innerText = "ሁለቱም (SMS + Telegram) ተልኳል";
+                document.getElementById('msg-modal-icon').className = "fa-solid fa-paper-plane text-3xl text-teal-400 animate-bounce";
+            }
+
+            document.getElementById('msg-notification-modal').classList.remove('hidden');
+            showToast("የማሳወቂያ መልእክት በተሳካ ሁኔታ ተሰራጭቷል!");
+        }
+
+        function closeMsgModal() {
+            document.getElementById('msg-notification-modal').classList.add('hidden');
+        }
+
+        function processProductionDispatch() {
+            const soId = document.getElementById('prodSalesOrderSelect').value;
+            const dispatchVol = parseFloat(document.getElementById('prodDispatchVolume').value) || 0;
+            const driverName = document.getElementById('prodDriverName').value.trim();
+            const mixerPlate = document.getElementById('prodMixerPlate').value.trim();
+            const gpsDistance = parseFloat(document.getElementById('prodGpsDistance').value) || 10;
+            const channel = document.getElementById('notificationChannel').value;
+
+            if (!soId || dispatchVol <= 0 || !driverName || !mixerPlate) {
+                showToast('እባክዎን ማዘዣ፣ መጠን፣ የሹፌር ስም እና ታርጋ በትክክል ይሙሉ!', true);
+                return;
+            }
+
+            const order = salesOrders.find(o => o.id === soId);
+            if (!order) return;
+
+            const mixFormula = mixFormulas.find(m => m.grade === order.grade && m.clientName === order.customerName) || mixFormulas.find(m => m.grade === order.grade) || {
+                opc: 350, sandKg: 750, agg00: 150, agg01: 450, agg02: 500, cement: "PPC Dangote", sand: "Crushed-Sand"
+            };
+
+            const requiredCement = (parseFloat(mixFormula.opc || 350) * dispatchVol) / 100;
+            const requiredSand = (parseFloat(mixFormula.sandKg || 750) * dispatchVol) / 1500;
+            const requiredAgg = ((parseFloat(mixFormula.agg00 || 150) + parseFloat(mixFormula.agg01 || 450) + parseFloat(mixFormula.agg02 || 500)) * dispatchVol) / 1500;
+
+            const cementKey = mixFormula.cement ? mixFormula.cement.replace(' ', '-') : 'PPC-Dangote';
+            const sandKey = mixFormula.sand ? mixFormula.sand.replace(' ', '-') : 'Crushed-Sand';
+
+            let shortages = [];
+            if ((stocks[cementKey] || 0) < requiredCement) {
+                shortages.push(`ሲሚንቶ (${cementKey}): ${requiredCement.toFixed(1)} qt ያስፈልጋል (ቀሪ: ${stocks[cementKey] || 0})`);
+            }
+            if ((stocks[sandKey] || 0) < requiredSand) {
+                shortages.push(`አሸዋ (${sandKey}): ${requiredSand.toFixed(1)} m³ ያስፈልጋል (ቀሪ: ${stocks[sandKey] || 0})`);
+            }
+            if ((stocks['Agg-01'] || 0) < requiredAgg) {
+                shortages.push(`ጠጠር: ${requiredAgg.toFixed(1)} m³ ያስፈልጋል (ቀሪ: ${stocks['Agg-01'] || 0})`);
+            }
+
+            if (shortages.length > 0) {
+                showToast(`[የጥሬ ዕቃ እጥረት አለ!] ❌ ወጪ ማዘዝ አይቻልም፦ ${shortages.join(' | ')}`, true);
+                return;
+            }
+
+            stocks[cementKey] -= requiredCement;
+            stocks[sandKey] -= requiredSand;
+            stocks['Agg-01'] -= (requiredAgg / 2);
+            stocks['Agg-02'] -= (requiredAgg / 2);
+
+            const calculatedDiesel = Math.round((gpsDistance * 0.4) + (dispatchVol * 0.2));
+            stocks['Diesel-Fuel'] -= calculatedDiesel;
+            order.dispatchedVolume += dispatchVol;
+
+            let existingDriver = drivers.find(d => d.plate.toLowerCase() === mixerPlate.toLowerCase() || d.name.toLowerCase() === driverName.toLowerCase());
+            if (existingDriver) {
+                existingDriver.trips += 1;
+                existingDriver.expenses = (existingDriver.expenses || (existingDriver.trips * existingDriver.rate)) + existingDriver.rate;
+                existingDriver.name = driverName;
+                existingDriver.plate = mixerPlate;
+            } else {
+                drivers.push({ name: driverName, plate: mixerPlate, rate: 300, trips: 1, expenses: 300 });
+            }
+
+            const dispatchId = 'DISP-' + Math.floor(1000 + Math.random() * 9000);
+            fleetLogs.unshift({
+                date: new Date().toLocaleTimeString(),
+                dispatchId, soId: order.id, customer: order.customerName, plate: `${mixerPlate} (${driverName})`, distance: gpsDistance + ' km',
+                diesel: calculatedDiesel, qrStatus: "VERIFIED", team: "Production -> HR Auto-Sync"
+            });
+
+            saveStateToStorage();
+            renderFleetLogs();
+            renderStocks();
+            checkStockAlerts();
+            renderSalesOrders();
+            renderDriversTable();
+            updateNetProfitDashboard();
+
+            if (order.phone) {
+                sendMultiChannelNotification(order.phone, `BATCHING PLANT Dispatch: የ ${dispatchVol}m³ ኮንክሪት በመኪና ታርጋ ${mixerPlate} (${driverName}) ተልኳል!`, channel);
+            }
+
+            openGatePassModal(dispatchId, order, dispatchVol, driverName, mixerPlate);
+            showToast('ጭነቱ በስኬት ተመዝግቧል፤ የጌት ፓስ ሰነድ ተዘጋጅቷል!');
+        }
+
+        function openGatePassModal(dispatchId, order, volume, driver, plate) {
+            document.getElementById('gp-id').innerText = dispatchId;
+            document.getElementById('gp-date').innerText = new Date().toLocaleString();
+            document.getElementById('gp-so').innerText = order.id;
+            document.getElementById('gp-customer').innerText = `${order.customerName} (${order.siteName})`;
+            document.getElementById('gp-grade').innerText = order.grade;
+            document.getElementById('gp-volume').innerText = volume.toLocaleString() + ' m³';
+            document.getElementById('gp-driver').innerText = driver;
+            document.getElementById('gp-plate').innerText = plate;
+            document.getElementById('gatepass-modal').classList.remove('hidden');
+        }
+
+        function closeGatePassModal() {
+            document.getElementById('gatepass-modal').classList.add('hidden');
+        }
+
+        function renderFleetLogs() {
+            const tbody = document.getElementById('fleetLogTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            fleetLogs.forEach(f => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                        <td class="p-2.5 font-mono text-slate-400 text-[11px]">${f.date}</td>
+                        <td class="p-2.5 font-mono text-amber-400">${f.soId}</td>
+                        <td class="p-2.5 font-bold text-amber-400">${f.plate}</td>
+                        <td class="p-2.5 font-mono text-blue-400">${f.distance}</td>
+                        <td class="p-2.5 font-mono text-red-400">${f.diesel} L</td>
+                        <td class="p-2.5 text-emerald-400 font-bold">${f.qrStatus}</td>
+                        <td class="p-2.5 text-teal-400 text-[11px]">${f.team}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function submitShiftHandover() {
+            const shiftType = document.getElementById('shiftTypeSelect').value;
+            const outgoingOp = document.getElementById('shiftOutgoingOp').value.trim() || 'አስረካቢ';
+            const incomingOp = document.getElementById('shiftIncomingOp').value.trim() || 'ተረካቢ';
+            const volume = parseFloat(document.getElementById('shiftVolProduced').value) || 0;
+
+            if (volume <= 0) {
+                showToast('እባክዎን የተመረተውን መጠን (m³) በትክክል ያስገቡ!', true);
+                return;
+            }
+
+            shiftLogs.unshift({
+                date: new Date().toLocaleString(),
+                shift: shiftType,
+                team: `${outgoingOp} ➔ ${incomingOp}`,
+                volume: volume
+            });
+
+            saveStateToStorage();
+            renderShiftLogs();
+            showToast(`የፈረቃ መረካከቢያ ተመዝግቧል! ምርት ድምር: ${volume} m³`);
+        }
+
+        function renderShiftLogs() {
+            const tbody = document.getElementById('shiftLogTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (shiftLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-3 text-center text-slate-500">ምንም የፈረቃ ሪፖርት የለም</td></tr>`;
+                return;
+            }
+            shiftLogs.forEach(s => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                        <td class="p-2.5 font-mono text-slate-400 text-[11px]">${s.date}</td>
+                        <td class="p-2.5 text-blue-400 font-bold">${s.shift}</td>
+                        <td class="p-2.5 text-teal-400 font-bold">${s.team}</td>
+                        <td class="p-2.5 font-mono text-emerald-400 font-bold">+${s.volume.toLocaleString()} m³</td>
+                        <td class="p-2.5 text-emerald-400 font-bold">COMPLETED & SUMMED</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function saveMixDesign() {
+            const clientName = document.getElementById('labClientSelect').value || 'አጠቃላይ ፕሮጀክት';
+            const grade = document.getElementById('labConcreteGrade').value;
+            const cement = document.getElementById('labCementType').value;
+            const sand = document.getElementById('labSandType').value;
+            
+            const agg00Val = document.getElementById('mixAgg00').value;
+            const agg01Val = document.getElementById('mixAgg01').value;
+            const agg02Val = document.getElementById('mixAgg02').value;
+            const chemType = document.getElementById('labChemType').value;
+            const chemVal = document.getElementById('mixChem').value;
+
+            const opc = document.getElementById('mixOpc').value;
+            const sVal = document.getElementById('mixSand').value;
+            const water = document.getElementById('mixWater').value;
+
+            const mixId = 'MIX-' + Math.floor(1000 + Math.random() * 9000);
+            mixFormulas.unshift({ 
+                mixId, clientName, grade, cement, sand, 
+                agg00: agg00Val, agg01: agg01Val, agg02: agg02Val,
+                chem: `${chemType} (${chemVal}L)`,
+                opc, sandKg: sVal, water
+            });
+            saveStateToStorage();
+            renderMixDesigns();
+            showToast(`የኮንክሪት ቀመር ለድርጅት [${clientName}] ግሬድ ${grade} ተመዝግቧል!`);
+        }
+
+        function renderMixDesigns() {
+            const tbody = document.getElementById('mixDesignTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (mixFormulas.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-3 text-center text-slate-500">ምንም ቀመር የለም</td></tr>`;
+                return;
+            }
+            mixFormulas.forEach((m, index) => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                        <td class="p-3 font-bold text-amber-400">${m.clientName}</td>
+                        <td class="p-3 font-mono font-bold text-teal-400">${m.grade}</td>
+                        <td class="p-3 text-white text-xs">${m.cement} + ${m.sand}</td>
+                        <td class="p-3 text-blue-400 text-xs">00:${m.agg00}, 01:${m.agg01}, 02:${m.agg02} kg</td>
+                        <td class="p-3 text-emerald-400 text-xs">${m.chem}</td>
+                        <td class="p-3 font-mono text-xs text-slate-300">Cemt:${m.opc}kg, Wat:${m.water}L</td>
+                        <td class="p-3 text-center"><button onclick="openMixReceiptModal(${index})" class="bg-teal-600 hover:bg-teal-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow"><i class="fa-solid fa-print"></i> ፕሪንት አሳይ</button></td>
+                    </tr>
+                `;
+            });
+        }
+
+        function openMixReceiptModal(index) {
+            const m = mixFormulas[index];
+            if (!m) return;
+            document.getElementById('mix-receipt-client').innerText = m.clientName;
+            document.getElementById('mix-receipt-grade').innerText = m.grade;
+            document.getElementById('mix-receipt-cement').innerText = m.cement;
+            document.getElementById('mix-receipt-sand').innerText = m.sand;
+            document.getElementById('mix-res-opc').innerText = m.opc + ' Kg';
+            document.getElementById('mix-res-sand').innerText = m.sandKg + ' Kg';
+            document.getElementById('mix-res-aggs').innerText = `00: ${m.agg00}kg | 01: ${m.agg01}kg | 02: ${m.agg02}kg`;
+            document.getElementById('mix-res-chem').innerText = m.chem;
+            document.getElementById('mix-res-water').innerText = m.water + ' L';
+            document.getElementById('mix-receipt-modal').classList.remove('hidden');
+        }
+
+        function closeMixReceiptModal() {
+            document.getElementById('mix-receipt-modal').classList.add('hidden');
+        }
+
+        function submitCubeTest() {
+            const sampleId = document.getElementById('qcSampleId').value || 'SO-101';
+            const strength = parseFloat(document.getElementById('qcStrengthResult').value) || 0;
+            cubeTests.unshift({
+                date: new Date().toLocaleDateString(),
+                sampleId,
+                grade: document.getElementById('qcGrade').value,
+                testType: document.getElementById('qcTestType').value,
+                strength,
+                passed: strength >= 30
+            });
+            saveStateToStorage();
+            renderCubeTests();
+            showToast('Cube Test በስኬት ተመዝግቧል!');
+        }
+
+        function renderCubeTests() {
+            const tbody = document.getElementById('cubeTestTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (cubeTests.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-slate-500">ምንም የኩብ ቴስት የለም</td></tr>`;
+                return;
+            }
+            cubeTests.forEach(c => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                        <td class="p-2.5 font-mono text-slate-400">${c.date}</td>
+                        <td class="p-2.5 font-bold text-white">${c.sampleId}</td>
+                        <td class="p-2.5 text-amber-400 font-bold">${c.grade}</td>
+                        <td class="p-2.5 text-teal-400 font-mono">${c.testType}</td>
+                        <td class="p-2.5 font-mono text-emerald-400 font-bold">${c.strength} MPa</td>
+                        <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${c.passed ? 'bg-emerald-950 text-emerald-400' : 'bg-red-950 text-red-400'}">${c.passed ? 'PASSED' : 'FAILED'}</span></td>
+                    </tr>
+                `;
+            });
+        }
+
+        function updateFinanceDropdown() {
+            const select = document.getElementById('finOrderSelect');
+            if (!select) return;
+            select.innerHTML = '<option value="">-- SO ይምረጡ --</option>';
+            salesOrders.filter(o => o.status === 'ACTIVE').forEach(o => select.innerHTML += `<option value="${o.id}">${o.id} - ${o.customerName} (${o.totalCost.toLocaleString()} ETB)</option>`);
+        }
+
+        function previewFinanceOrder() {
+            const soId = document.getElementById('finOrderSelect').value;
+            const amtInput = document.getElementById('finPaidAmountInput');
+            const order = salesOrders.find(o => o.id === soId);
+            if (order) amtInput.value = order.totalCost - order.paidAmount;
+        }
+
+        function issueFinanceInvoice() {
+            const soId = document.getElementById('finOrderSelect').value;
+            const paidAmt = parseFloat(document.getElementById('finPaidAmountInput').value) || 0;
+            const paymentRef = document.getElementById('finPaymentRef').value.trim();
+            const channel = document.getElementById('notificationChannel').value;
+
+            if (!soId || paidAmt <= 0 || !paymentRef) {
+                showToast('እባክዎን SO፣ የሚከፈለው መጠን እና የባንክ ሪፈረንስ ቁጥር ያስገቡ!', true);
+                return;
+            }
+
+            const duplicateCheck = financeInvoices.find(i => i.paymentRef.toLowerCase() === paymentRef.toLowerCase());
+            if (duplicateCheck) {
+                showToast(`[Duplicate Payment Error!] የባንክ ሪፈረንስ "${paymentRef}" ከዚህ ቀደም ለደረሰኝ #${duplicateCheck.invId} ተመዝግቧል።`, true);
+                return;
+            }
+
+            const order = salesOrders.find(o => o.id === soId);
+            if (!order) return;
+
+            order.paidAmount += paidAmt;
+            plantData[activePlant].totalRevenue = (plantData[activePlant].totalRevenue || 0) + paidAmt;
+
+            const invId = 'INV-' + Math.floor(1000 + Math.random() * 9000);
+            financeInvoices.unshift({
+                invId, soId: order.id, customerName: order.customerName,
+                paymentMode: document.getElementById('finPaymentMode').value,
+                paidAmt, paymentRef,
+                cashier: document.getElementById('finCashier').value || 'ካሼር',
+                verifier: document.getElementById('finVerifier').value || 'አረጋጋጭ',
+                manager: document.getElementById('finManager').value || 'ማኔጀር',
+                date: new Date().toLocaleString()
+            });
+
+            saveStateToStorage();
+            renderFinanceInvoices();
+            renderSalesOrders();
+            updateFinanceDropdown();
+            updateNetProfitDashboard();
+
+            if (order.phone) {
+                sendMultiChannelNotification(order.phone, `BATCHING PLANT Finance: ደረሰኝ #${invId} (SO: ${order.id}) ተሰጥቷል። የተከፈለ: ${paidAmt.toLocaleString()} ETB`, channel);
+            }
+
+            showToast('ደረሰኝ በስኬት ተቆርጦ ጸድቋል!');
+        }
+
+        function renderFinanceInvoices() {
+            const tbody = document.getElementById('financeInvoiceTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (financeInvoices.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-500">ምንም ደረሰኝ አልተቆረጠም</td></tr>`;
+                return;
+            }
+            financeInvoices.forEach(inv => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                        <td class="p-3 font-mono font-bold text-emerald-400">${inv.invId}</td>
+                        <td class="p-3 font-mono text-amber-400">${inv.soId}</td>
+                        <td class="p-3 font-bold text-white">${inv.customerName}</td>
+                        <td class="p-3 text-blue-400">${inv.paymentMode}<br><span class="text-[10px] font-mono text-yellow-400">Ref: ${inv.paymentRef}</span></td>
+                        <td class="p-3 font-mono text-emerald-400">+${inv.paidAmt.toLocaleString()} ETB</td>
+                        <td class="p-3 text-teal-400 text-[11px]">${inv.cashier} / ${inv.verifier} / ${inv.manager}</td>
+                        <td class="p-3 text-center"><button onclick="openReceiptModal('${inv.invId}')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow"><i class="fa-solid fa-print"></i> ደረሰኝ አሳይ</button></td>
+                    </tr>
+                `;
+            });
+        }
+
+        function openReceiptModal(invId) {
+            const inv = financeInvoices.find(i => i.invId === invId);
+            if (!inv) return;
+            document.getElementById('receipt-inv-id').innerText = inv.invId;
+            document.getElementById('receipt-date').innerText = inv.date;
+            document.getElementById('receipt-so-id').innerText = inv.soId;
+            document.getElementById('receipt-customer').innerText = inv.customerName;
+            document.getElementById('receipt-mode').innerText = inv.paymentMode;
+            document.getElementById('receipt-ref').innerText = inv.paymentRef;
+            document.getElementById('receipt-amount').innerText = inv.paidAmt.toLocaleString() + ' ETB';
+            document.getElementById('receipt-cashier').innerText = inv.cashier;
+            document.getElementById('receipt-verifier').innerText = inv.verifier;
+            document.getElementById('receipt-manager').innerText = inv.manager;
+            document.getElementById('receipt-modal').classList.remove('hidden');
+        }
+
+        function closeReceiptModal() { document.getElementById('receipt-modal').classList.add('hidden'); }
+
+        function addDriverProfile() {
+            const name = document.getElementById('hrDriverName').value.trim();
+            const plate = document.getElementById('hrMixerPlate').value.trim();
+            const rate = parseFloat(document.getElementById('hrTripRate').value) || 300;
+            if (!name || !plate) {
+                showToast('መረጃ ይሙሉ!', true);
+                return;
+            }
+            drivers.push({ name, plate, rate, trips: 0, expenses: 0 });
+            saveStateToStorage();
+            renderDriversTable();
+            updateNetProfitDashboard();
+            showToast('አሽከርካሪ ተመዝግቧል!');
+        }
+
+        function renderDriversTable() {
+            const tbody = document.getElementById('driverHrTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            drivers.forEach(d => {
+                const totalExp = d.expenses || (d.trips * d.rate);
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                        <td class="p-3 font-bold text-white">${d.name}</td>
+                        <td class="p-3 font-mono text-amber-400">${d.plate}</td>
+                        <td class="p-3 font-mono text-blue-400">${d.trips} Trips</td>
+                        <td class="p-3 font-mono text-emerald-400 font-bold">${(d.trips * d.rate).toLocaleString()} ETB</td>
+                        <td class="p-3 font-mono text-amber-400 font-bold">${totalExp.toLocaleString()} ETB</td>
+                        <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400">ACTIVE</span></td>
+                    </tr>
+                `;
+            });
+        }
+
+        function updateProductionDropdown() {
+            const select = document.getElementById('prodSalesOrderSelect');
+            if (!select) return;
+            select.innerHTML = '<option value="">-- SO ይምረጡ --</option>';
+            salesOrders.filter(o => o.status === 'ACTIVE').forEach(o => select.innerHTML += `<option value="${o.id}">${o.id} - ${o.customerName}</option>`);
+        }
+
+        function renderSalesOrders() {
+            const tbody = document.getElementById('salesOrderTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            salesOrders.forEach(o => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                        <td class="p-3 font-mono font-bold text-amber-400">${o.id}</td>
+                        <td class="p-3">${o.customerName}<br><span class="text-[10px] text-teal-400">${o.phone}</span></td>
+                        <td class="p-3">${o.paymentType}</td>
+                        <td class="p-3">${o.grade} / ${o.totalVolume} m³</td>
+                        <td class="p-3 font-mono text-blue-400">${o.totalVolume - o.dispatchedVolume} m³</td>
+                        <td class="p-3 font-mono">${o.totalCost.toLocaleString()} ETB</td>
+                        <td class="p-3 font-mono text-emerald-400">${o.paidAmount.toLocaleString()} ETB</td>
+                        <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${o.status === 'ACTIVE' ? 'bg-blue-950 text-blue-400' : 'bg-red-950 text-red-400'}">${o.status}</span></td>
+                    </tr>
+                `;
+            });
+        }
+
+        function renderClientsCreditTable() {
+            const tbody = document.getElementById('clientCreditTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            clients.forEach(c => {
+                tbody.innerHTML += `
+                    <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                        <td class="p-3 font-bold text-white">${c.name}</td>
+                        <td class="p-3 font-mono text-blue-400">${c.creditLimit.toLocaleString()} ETB</td>
+                        <td class="p-3 font-mono text-red-400">${c.usedCredit.toLocaleString()} ETB</td>
+                        <td class="p-3 font-mono text-emerald-400 font-bold">${(c.creditLimit - c.usedCredit).toLocaleString()} ETB</td>
+                        <td class="p-3 text-amber-400 font-bold">${c.daysOverdue} ቀን</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function openQrScanner() {
+            document.getElementById('qr-modal').classList.remove('hidden');
+            setTimeout(() => { document.getElementById('qr-modal-text').innerText = "QR Code Waybill Scanned & Verified!"; }, 1200);
+        }
+        function closeQrModal() { document.getElementById('qr-modal').classList.add('hidden'); }
+
+        function generateSystemReport() {
+            const content = document.getElementById('report-modal-content');
+            content.innerHTML = `
+                <div class="space-y-4">
+                    <div class="bg-slate-100 p-4 rounded-xl border border-slate-300">
+                        <h4 class="font-bold text-blue-900 mb-2">1. አጠቃላይ የፕላንት ገቢ እና ፋይናንስ ማጠቃለያ</h4>
+                        <p class="text-slate-700">ፕላንት: <strong>${activePlant}</strong></p>
+                        <p class="text-slate-700">ጠቅላላ የተሰበሰበ ገቢ: <span class="font-mono font-bold text-emerald-700">${(plantData[activePlant].totalRevenue || 0).toLocaleString()} ETB</span></p>
+                        <p class="text-slate-700">የተቆረጡ ደረሰኞች ብዛት: <strong>${financeInvoices.length} ደረሰኞች</strong></p>
+                    </div>
+                    <div class="bg-slate-100 p-4 rounded-xl border border-slate-300">
+                        <h4 class="font-bold text-blue-900 mb-2">2. ንቁ የሽያጭ ትዕዛዞች (Active Sales Orders)</h4>
+                        <p class="text-slate-700">ጠቅላላ የተመዘገቡ ማዘዣዎች: <strong>${salesOrders.length} SOs</strong></p>
+                    </div>
+                    <div class="bg-slate-100 p-4 rounded-xl border border-slate-300">
+                        <h4 class="font-bold text-blue-900 mb-2">3. የላብራቶሪ ቀመሮች እና ኩብ ቴስቶች</h4>
+                        <p class="text-slate-700">የተመዘገቡ የቀመር አይነቶች (Mix Designs): <strong>${mixFormulas.length}</strong></p>
+                        <p class="text-slate-700">የተደረጉ የኩብ ቴስት ውጤቶች: <strong>${cubeTests.length} tests</strong></p>
+                    </div>
+                </div>
+            `;
+            document.getElementById('report-preview-modal').classList.remove('hidden');
+        }
+
+        function closeReportPreviewModal() {
+            document.getElementById('report-preview-modal').classList.add('hidden');
+        }
+
+        function downloadExcelCSV() {
+            let csvContent = "data:text/csv;charset=utf-8,Invoice ID,SO ID,Customer,Payment Mode,Amount (ETB)\n";
+            financeInvoices.forEach(inv => {
+                csvContent += `${inv.invId},${inv.soId},"${inv.customerName}",${inv.paymentMode},${inv.paidAmt}\n`;
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "batching_plant_enterprise_report.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('Excel (.csv) ሪፖርት በስኬት ወርዷል!');
+        }
+
+        function downloadExcelCSVReal() { downloadExcelCSV(); }
+
+        function downloadPDF() {
+            generateSystemReport();
+            setTimeout(() => { window.print(); }, 300);
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('productionChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['ሰኞ', 'ማክሰኞ', 'ረቡዕ', 'ሐሙስ', 'አርብ', 'ቅዳሜ', 'እሁድ'],
+                    datasets: [{ label: 'ምርት (m³)', data: [150, 210, 180, 250, 200, 290, 340], borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true }]
+                },
+                options: { responsive: true, plugins: { legend: { labels: { color: '#ffffff' } } } }
+            });
+        }
+    </script>
+</body>
+</html>

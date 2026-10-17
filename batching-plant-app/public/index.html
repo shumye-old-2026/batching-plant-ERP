@@ -1,0 +1,380 @@
+ <!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <title>BamaMix Cloud System</title>
+    <style>
+        body { 
+            font-family: sans-serif; 
+            padding: 20px; 
+            background: #f4f4f4; 
+            margin: 0;
+        }
+        header { 
+            background: #E65100; 
+            color: white; 
+            padding: 20px; 
+            text-align: center; 
+            border-radius: 8px; 
+            margin-bottom: 20px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+        }
+        header h1 { 
+            margin: 0; 
+            font-size: 28px; 
+            font-weight: bold; 
+            letter-spacing: 1px; 
+        }
+        header p { 
+            margin: 5px 0 0 0; 
+            font-size: 14px; 
+            opacity: 0.9; 
+        }
+      .stock-container { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 10px; 
+            margin-bottom: 20px; 
+            background: #fff; 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
+        }
+      .card { 
+            color: white; 
+            padding: 12px; 
+            border-radius: 6px; 
+            min-width: 130px; 
+            text-align: center; 
+            font-weight: bold; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+        }
+      .main-wrapper { 
+            display: flex; 
+            gap: 20px; 
+            align-items: flex-start; 
+            margin-bottom: 30px; 
+        }
+      .form-box { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            border: 1px solid #ddd; 
+            flex: 1; 
+            display: none; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
+        }
+      .form-box h3 { 
+            margin-top: 0; 
+            color: #264653; 
+            border-bottom: 2px solid #E65100; 
+            padding-bottom: 8px; 
+        }
+        input, select { 
+            display: block; 
+            width: 95%; 
+            margin: 8px 0; 
+            padding: 10px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            font-size: 14px; 
+        }
+        button { 
+            background: #E65100; 
+            color: white; 
+            border: none; 
+            padding: 12px; 
+            width: 100%; 
+            cursor: pointer; 
+            border-radius: 4px; 
+            margin-top: 15px; 
+            font-weight: bold; 
+            font-size: 15px; 
+            transition: background 0.3s; 
+        }
+        button:hover { 
+            background: #d35400; 
+        }
+        
+        /* መግቢያ ገጽ */
+      .login-box { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 8px; 
+            border: 1px solid #ccc; 
+            max-width: 400px; 
+            margin: 100px auto; 
+            text-align: center; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
+        }
+      .user-info-bar { 
+            background: #264653; 
+            color: white; 
+            padding: 12px; 
+            border-radius: 6px; 
+            margin-bottom: 15px; 
+            display: none; 
+            justify-content: space-between; 
+            align-items: center; 
+        }
+      .logout-btn { 
+            background: #e76f51; 
+            width: auto; 
+            margin: 0; 
+            padding: 6px 12px; 
+        }
+
+        /* ሪፖርት ሰንጠረዥ */
+      .report-box { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            border: 1px solid #ccc; 
+            margin-top: 20px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 15px;
+ }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 12px; 
+            text-align: left; 
+            font-size: 14px; 
+        }
+        th { 
+            background-color: #264653; 
+            color: white; 
+        }
+        tr:nth-child(even) { 
+            background-color: #f9f9f9; 
+        }
+      .btn-export { 
+            display: inline-block; width: auto; padding: 8px 15px; margin-right: 10px; background: #2a9d8f; 
+        }
+      .btn-word { 
+            background: #2b579a; 
+        }
+      .approve-btn { 
+            background: #2a9d8f; padding: 6px 12px; font-size: 12px; cursor: pointer; border-radius: 3px; border: none; color: white; font-weight: bold; 
+        }
+
+        /* Analytics Dashboard Cards */
+      .analytics-container { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 25px; }
+      .analytics-card { flex: 1; min-width: 220px; background: white; border-left: 5px solid #E65100; border-radius: 6px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+      .analytics-card h4 { margin: 0 0 5px 0; color: #666; font-size: 13px; }
+      .analytics-card h2 { margin: 0 0 5px 0; color: #264653; font-size: 22px; }
+      .analytics-card span { font-size: 12px; font-weight: bold; }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+</head>
+<body>
+
+    <div id="login-screen" class="login-box">
+        <h2 style="color: #E65100;">BamaMix ኦንላይን መግቢያ</h2>
+        <select id="loginUser">
+            <option value="">-- ተጠቃሚ ይምረጡ --</option>
+            <option value="አስረካቢ">አስረካቢ / ተረካቢ (Store)</option>
+            <option value="ቸክ አድራጊ">ቸክ አድራጊ (Lab/Checker)</option>
+            <option value="አፅዳቂ">አፅዳቂ (Manager/Approver)</option>
+        </select>
+        <input type="password" id="userPassword" placeholder="የይለፍ ቃል (Password)">
+        <button onclick="handleLogin()">ግባ (Login)</button>
+    </div>
+
+    <div id="main-screen" style="display: none;">
+        <header>
+            <h1>BamaMix Batching Plant System</h1>
+            <p>ቀልጣፋ፣ ፈጣን እና ደህንነቱ የተጠበቀ የክላውድ መቆጣጠሪያ ስርዓት</p>
+        </header>
+
+        <div class="user-info-bar" id="userBar">
+            <span id="welcomeText"></span>
+            <button onclick="handleLogout()" class="logout-btn">ውጣ (Logout)</button>
+        </div>
+
+        <div class="stock-container" id="stock-summary"></div>
+
+        <h2 style="color: #264653; margin-bottom: 10px;">የስራ እንቅስቃሴ ትንተና እና ማጠቃለያ</h2>
+        <div class="analytics-container">
+            <div class="analytics-card">
+                <h4>የዛሬ ኮንክሪት ወጪ</h4>
+                <h2 id="today-outflow">0.00 m³</h2>
+                <span style="color:#2a9d8f;">እለታዊ ጠቅላላ ምርት</span>
+            </div>
+            <div class="analytics-card">
+                <h4>የዚህ ወር ኮንክሪት ወጪ</h4>
+                <h2 id="month-outflow">0.00 m³</h2>
+                <span id="outflow-growth">ከባለፈው ወር፡ 0.00%</span>
+            </div>
+            <div class="analytics-card">
+                <h4>የዚህ ወር ሲሚንቶ ገቢ</h4>
+                <h2 id="month-cement-in">0.00 Qt</h2>
+                <span id="cement-growth">ከባለፈው ወር፡ 0.00%</span>
+            </div>
+            <div class="analytics-card">
+                <h4>የዚህ ወር አሸዋ ገቢ</h4>
+                <h2 id="month-sand-in">0.00 m³</h2>
+                <span id="sand-growth">ከባለፈው ወር፡ 0.00%</span>
+            </div>
+        </div>
+
+        <div class="main-wrapper">
+            <section class="form-box" id="box-inbound">
+                <h3>ገቢ መመዝገቢያ (Store)</h3>
+                <select id="inCat" onchange="populateSub('inCat', 'inSub')"></select>
+                <select id="inSub"></select>
+                <input type="number" id="inAmt" placeholder="መጠን">
+ <input type="text" id="inSupplier" placeholder="የአቅራቢ ስም">
+                <input type="text" id="inDriver" placeholder="የሹፌር ስም">
+                <input type="text" id="inPlate" placeholder="ታርጋ ቁጥር">
+                <input type="text" id="inReceiver" placeholder="ተረካቢ">
+                <input type="text" id="inChecker" placeholder="ቸክ አድራጊ">
+                <input type="text" id="inApprover" placeholder="አፅዳቂ (ግዴታ ነው)">
+                <button onclick="saveInbound()">SAVE ገቢ (ጥያቄ ላክ)</button>
+            </section>
+
+            <section class="form-box" id="box-mix">
+                <h3>Mix Design ዝግጅት</h3>
+                
+                <label>የኮንክሪት Grade:</label>
+                <select id="mixGrade">
+                    <option value="">-- የኮንክሪት Grade ይምረጡ --</option>
+                    <option value="C-5">C-5 Concrete</option>
+                    <option value="C-10">C-10 Concrete</option>
+                    <option value="C-15">C-15 Concrete</option>
+                    <option value="C-20">C-20 Concrete</option>
+                    <option value="C-25">C-25 Concrete</option>
+                    <option value="C-30">C-30 Concrete</option>
+                    <option value="C-35">C-35 Concrete</option>
+                    <option value="C-40">C-40 Concrete</option>
+                    <option value="C-45">C-45 Concrete</option>
+                    <option value="C-50">C-50 Concrete</option>
+                    <option value="C-55">C-55 Concrete</option>
+                    <option value="C-60">C-60 Concrete</option>
+                    <option value="C-65">C-65 Concrete</option>
+                    <option value="C-70">C-70 Concrete</option>
+                    <option value="C-75">C-75 Concrete</option>
+                    <option value="C-80">C-80 Concrete</option>
+                </select>
+                
+                <label>ሲሚንቶ አይነት:</label>
+                <select id="mixCement">
+                    <option value="OPC_Dangote">OPC ዳንጎቴ</option>
+                    <option value="PPC_Dangote">PPC ዳንጎቴ</option>
+                    <option value="OPC_Lemi">OPC ለሚ</option>
+                    <option value="PPC_Lemi">PPC ለሚ</option>
+                    <option value="OPC_Ethio">OPC ኢትዮ</option>
+                    <option value="PPC_Ethio">PPC ኢትዮ</option>
+                </select>
+                <input type="number" id="mixCementAmt" placeholder="ሲሚንቶ ለ 1m³ (kg)">
+                
+                <label>አሸዋ አይነት:</label>
+                <select id="mixSand">
+                    <option value="Natural_Sand">Natural Sand</option>
+                    <option value="Silica_Sand">Silica Sand</option>
+                    <option value="Crushed_Sand">Crushed Sand</option>
+                </select>
+                <input type="number" id="mixSandAmt" placeholder="አሸዋ ለ 1m³ (kg)">
+                
+                <label>የጠጠር ዓይነቶች (መምረጥ ይቻላል):</label>
+                <div style="display: flex; gap: 15px; margin: 10px 0;">
+                    <label><input type="checkbox" id="agg00" style="display:inline; width:auto;"> 00</label>
+                    <label><input type="checkbox" id="agg01" style="display:inline; width:auto;"> 01</label>
+                    <label><input type="checkbox" id="agg02" style="display:inline; width:auto;"> 02</label>
+                </div>
+                <input type="number" id="mixAgg01Amt" placeholder="ጠጠር 01 መጠን (kg)">
+                <input type="number" id="mixAgg02Amt" placeholder="ጠጠር 02 መጠን (kg)">
+                <input type="number" id="mixAgg00Amt" placeholder="ጠጠር 00 (kg)">
+                
+                <label>ኬሚካል አይነት:</label>
+                <select id="mixChem">
+                    <option value="Additive_GP80">GP80</option>
+                    <option value="Additive_GT30">Additive GT30</option>
+ </select>
+                <input type="number" id="mixChemAmt" placeholder="ኬሚካል ለ 1m³ (Litre)">
+                
+                <input type="text" id="mixChecker" placeholder="የሚያረጋግጥ ባለስልጣን">
+                
+                <button onclick="saveMix()">SAVE MIX</button>
+            </section>
+
+            <section class="form-box" id="box-outbound">
+                <h3>ወጪ መመዝገቢያ (Ready Mix)</h3>
+                <select id="outGrade">
+                    <option value="">-- የወጪ ኮንክሪት Grade ይምረጡ --</option>
+                    <option value="C-5">C-5 Concrete</option>
+                    <option value="C-10">C-10 Concrete</option>
+                    <option value="C-15">C-15 Concrete</option>
+                    <option value="C-20">C-20 Concrete</option>
+                    <option value="C-25">C-25 Concrete</option>
+                    <option value="C-30">C-30 Concrete</option>
+                    <option value="C-35">C-35 Concrete</option>
+                    <option value="C-40">C-40 Concrete</option>
+                    <option value="C-45">C-45 Concrete</option>
+                    <option value="C-50">C-50 Concrete</option>
+                    <option value="C-55">C-55 Concrete</option>
+                    <option value="C-60">C-60 Concrete</option>
+                    <option value="C-65">C-65 Concrete</option>
+                    <option value="C-70">C-70 Concrete</option>
+                    <option value="C-75">C-75 Concrete</option>
+                    <option value="C-80">C-80 Concrete</option>
+                </select>
+                <input type="number" id="outVolume" placeholder="መጠን (m³)">
+                <input type="text" id="outSite" placeholder="የሚወጣበት ሳይት">
+                <input type="text" id="outDriver" placeholder="የሹፌር ስም">
+                <input type="text" id="outPlate" placeholder="ታርጋ ቁጥር">
+                <input type="text" id="outIssuer" placeholder="አስረካቢ">
+                <input type="text" id="outChecker" placeholder="ቸክ አድራጊ">
+                <input type="text" id="outApprover" placeholder="አፅዳቂ (ግዴታ ነው)">
+                <button onclick="saveOutbound()">SAVE ወጪ (ፍቃድ ይጠብቃል)</button>
+            </section>
+        </div>
+
+        <section class="report-box" id="box-analytics" style="margin-top: 20px;">
+            <h3 style="color: #264653; border-bottom: 2px solid #E65100; padding-bottom: 8px;">የእያንዳንዱ ቁሳቁስ እለታዊና ወርሃዊ እንቅስቃሴ ማጠቃለያ (BamaMix Real-time Analytics)</h3>
+            <table id="analyticsTable">
+                <thead>
+                    <tr>
+                        <th>የቁሳቁስ አይነት</th>
+                        <th>የዛሬ ገቢ (Today In)</th>
+                        <th>የዚህ ወር ገቢ (This Month In)</th>
+                        <th>የገቢ ምጣኔ (MoM %)</th>
+                        <th>የዚህ ወር ወጪ/ፍጆታ</th>
+                        <th>የወጪ ምጣኔ (MoM %)</th>
+                    </tr>
+                </thead>
+                <tbody id="analyticsTableBody"></tbody>
+            </table>
+        </section>
+
+        <section class="report-box">
+            <h3>የወጪ እና ገቢ ዕቃዎች እንቅስቃሴ ሪፖርት</h3>
+            <button onclick="exportToExcel()" class="btn-export">ወደ Excel አውርድ (XLS)</button>
+            <button onclick="exportToWord()" class="btn-export btn-word">ወደ Word አውርድ (DOC)</button>
+            
+            <table id="reportTable">
+                <thead>
+                    <tr>
+                        <th>ቀንና ሰዓት</th>
+                        <th>አይነት</th>
+                        <th>የዕቃ/ኮንክሪት ዝርዝር</th>
+                        <th>መጠን</th>
+                        <th>የተጠቀመው ሬሾ (Recipe Used)</th>
+                        <th>ሳይት/አቅራቢ</th>
+                        <th>ሹፌር (ታርጋ)</th>
+                        <th>አስረካቢ/ተረካቢ</th>
+                        <th>ሁኔታ / አፅዳቂ</th>
+                    </tr>
+                </thead>
+                <tbody id="reportLog"></tbody>
+            </table>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
